@@ -10,6 +10,21 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   created_at: string
+  artifacts: MessageArtifact[]
+}
+
+export interface GuideCandidateArtifactItem {
+  candidate_id: string
+  title: string
+  author: string
+  summary: string
+  url: string
+  status: string
+}
+
+export interface MessageArtifact {
+  type: string
+  guides?: GuideCandidateArtifactItem[]
 }
 
 export interface AgentStreamEvent {
@@ -19,6 +34,7 @@ export interface AgentStreamEvent {
   text?: string
   run_id?: string
   message_id?: string
+  artifact?: MessageArtifact
 }
 
 interface Envelope<T> { data: T }

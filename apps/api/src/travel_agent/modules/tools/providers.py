@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import cast
 from urllib.parse import urlencode, urlparse
 
 import httpx
 
 from travel_agent.modules.tools.domain import ToolInputError, ToolUnavailableError
+from travel_agent.modules.tools.store import SqlAlchemyToolStore
 
 
 class AmapProvider:
@@ -20,7 +23,9 @@ class AmapProvider:
     ) -> None:
         self._key, self._timeout, self._transport = api_key, timeout, transport
 
-    async def execute(self, operation: str, args: dict[str, object]) -> dict[str, object]:
+    async def execute(
+        self, operation: str, args: dict[str, object], owner_user_id: str = ""
+    ) -> dict[str, object]:
         if not self._key:
             raise ToolUnavailableError("高德 Web Service Key 未配置。")
         if operation == "place_search":
@@ -162,7 +167,9 @@ class QWeatherProvider:
         self._host = _https_host(api_host)
         self._key, self._timeout, self._transport = api_key, timeout, transport
 
-    async def execute(self, operation: str, args: dict[str, object]) -> dict[str, object]:
+    async def execute(
+        self, operation: str, args: dict[str, object], owner_user_id: str = ""
+    ) -> dict[str, object]:
         if operation != "weather_forecast":
             raise ToolInputError("不支持的天气工具。")
         if not self._host or not self._key:
@@ -222,17 +229,31 @@ class XiaohongshuMcpProvider:
         self._endpoint, self._timeout = endpoint, timeout
         self._max_results, self._transport = max_results, transport
 
-    async def execute(self, operation: str, args: dict[str, object]) -> dict[str, object]:
-        if operation != "guide_search_xhs":
-            raise ToolInputError("小红书连接器仅允许只读搜索。")
-        keyword = _required_text(args, "query", 80)
-        raw = await self._call("search_feeds", {"keyword": keyword})
-        guides = self._normalize_guides(raw)[: self._max_results]
-        return {
-            "query": keyword,
-            "guides": guides,
-            "notice": "社区攻略是主观经验, 营业、票价和路线需另行复核。",
-        }
+    async def execute(
+        self, operation: str, args: dict[str, object], owner_user_id: str = ""
+    ) -> dict[str, object]:
+        if operation == "guide_search_xhs":
+            keyword = _required_text(args, "query", 80)
+            raw = await self._call("search_feeds", {"keyword": keyword})
+            guides = self._normalize_guides(raw)[: self._max_results]
+            return {
+                "query": keyword,
+                "guides": guides,
+                "notice": "社区攻略是主观经验, 营业、票价和路线需另行复核。",
+            }
+        if operation == "guide_detail_xhs":
+            feed_id = _required_text(args, "feed_id", 160)
+            token = _required_text(args, "xsec_token", 2000)
+            raw = await self._call(
+                "get_feed_detail",
+                {
+                    "feed_id": feed_id,
+                    "xsec_token": token,
+                    "load_all_comments": False,
+                },
+            )
+            return self._normalize_detail(raw, feed_id)
+        raise ToolInputError("小红书连接器仅允许只读搜索和详情读取。")
 
     async def _call(self, tool_name: str, arguments: dict[str, object]) -> object:
         headers = {"Accept": "application/json, text/event-stream"}
@@ -309,6 +330,7 @@ class XiaohongshuMcpProvider:
             normalized.append(
                 {
                     "id": guide_id,
+                    "xsec_token": token,
                     "title": str(card.get("displayTitle") or card.get("title") or "未命名攻略"),
                     "summary": str(card.get("desc") or card.get("content") or "")[:1200],
                     "author": str(author.get("nickname") or author.get("nickName") or ""),
@@ -319,6 +341,116 @@ class XiaohongshuMcpProvider:
                 }
             )
         return normalized
+
+    @staticmethod
+    def _normalize_detail(raw: object, feed_id: str) -> dict[str, object]:
+        root: dict[str, object] = cast(dict[str, object], raw) if isinstance(raw, dict) else {}
+        data_value = root.get("data")
+        data: dict[str, object] = (
+            cast(dict[str, object], data_value) if isinstance(data_value, dict) else root
+        )
+        note_value = data.get("note")
+        note: dict[str, object] = (
+            cast(dict[str, object], note_value) if isinstance(note_value, dict) else data
+        )
+        card_value = note.get("noteCard")
+        if isinstance(card_value, dict):
+            note = cast(dict[str, object], card_value)
+        user_value = note.get("user")
+        user: dict[str, object] = (
+            cast(dict[str, object], user_value) if isinstance(user_value, dict) else {}
+        )
+        images = _image_urls(note)
+        comments_value = data.get("comments") or data.get("commentList") or root.get("comments")
+        comments = []
+        for item in _list(comments_value)[:10]:
+            if not isinstance(item, dict):
+                continue
+            comment_user_value = item.get("user")
+            comment_user: dict[str, object] = (
+                cast(dict[str, object], comment_user_value)
+                if isinstance(comment_user_value, dict)
+                else {}
+            )
+            comments.append(
+                {
+                    "author": str(
+                        comment_user.get("nickname") or comment_user.get("nickName") or ""
+                    ),
+                    "content": str(item.get("content") or item.get("text") or "")[:800],
+                    "likes": _int(item.get("likeCount") or item.get("like_count")),
+                }
+            )
+        interactions_value = note.get("interactInfo")
+        interactions: dict[str, object] = (
+            cast(dict[str, object], interactions_value)
+            if isinstance(interactions_value, dict)
+            else {}
+        )
+        return {
+            "id": str(note.get("noteId") or note.get("id") or feed_id),
+            "title": str(note.get("title") or note.get("displayTitle") or "未命名攻略"),
+            "content": str(note.get("desc") or note.get("content") or "")[:24000],
+            "author": str(user.get("nickname") or user.get("nickName") or ""),
+            "images": images[:30],
+            "comments": comments,
+            "metadata": {
+                "liked_count": _int(interactions.get("likedCount") or note.get("likedCount")),
+                "collected_count": _int(
+                    interactions.get("collectedCount") or note.get("collectedCount")
+                ),
+                "comment_count": _int(interactions.get("commentCount") or note.get("commentCount")),
+                "share_count": _int(interactions.get("shareCount") or note.get("shareCount")),
+                "source_snapshot": "xiaohongshu_mcp",
+            },
+        }
+
+
+class GuideLibraryProvider:
+    name = "local_guide_library"
+
+    def __init__(self, store_factory: Callable[[], SqlAlchemyToolStore]) -> None:
+        self._store_factory = store_factory
+
+    async def execute(
+        self, operation: str, args: dict[str, object], owner_user_id: str = ""
+    ) -> dict[str, object]:
+        if operation != "guide_library_search" or not owner_user_id:
+            raise ToolInputError("攻略库检索请求无效。")
+        query = _required_text(args, "query", 120)
+        city = _optional_text(args, "city", 100)
+        terms = [value.casefold() for value in query.split() if value]
+        async with self._store_factory() as store:
+            guides = await store.list_guides(owner_user_id, 100, library_only=True)
+        matches = []
+        for guide in guides:
+            haystack = " ".join(
+                (guide.title, guide.city, guide.summary, guide.content, guide.user_notes)
+            ).casefold()
+            if city and city.casefold() != guide.city.casefold():
+                continue
+            if terms and not all(term in haystack for term in terms):
+                continue
+            matches.append(
+                {
+                    "guide_id": guide.id,
+                    "title": guide.title,
+                    "city": guide.city,
+                    "author": guide.author,
+                    "content": (guide.content or guide.summary)[:6000],
+                    "user_notes": guide.user_notes[:2000],
+                    "source_url": guide.url,
+                    "detail_fetched_at": guide.detail_fetched_at.isoformat()
+                    if guide.detail_fetched_at
+                    else None,
+                    "stale": bool(
+                        guide.detail_expires_at and guide.detail_expires_at <= datetime.now(UTC)
+                    ),
+                }
+            )
+            if len(matches) == 8:
+                break
+        return {"query": query, "city": city, "guides": matches, "source": "private_library"}
 
 
 def _mcp_envelope(response: httpx.Response) -> object:
@@ -360,6 +492,28 @@ def _coordinates(value: object) -> tuple[float | None, float | None]:
         return float(parts[0]), float(parts[1])
     except (IndexError, ValueError):
         return None, None
+
+
+def _image_urls(note: dict[str, object]) -> list[str]:
+    values = note.get("imageList") or note.get("images") or note.get("image_list")
+    result: list[str] = []
+    for item in _list(values):
+        if isinstance(item, str) and item.startswith("http"):
+            result.append(item)
+            continue
+        if not isinstance(item, dict):
+            continue
+        candidate = item.get("urlDefault") or item.get("urlPre") or item.get("url")
+        if isinstance(candidate, str) and candidate.startswith("http"):
+            result.append(candidate)
+            continue
+        info_value = item.get("infoList")
+        info: list[object] = cast(list[object], info_value) if isinstance(info_value, list) else []
+        for value in info:
+            if isinstance(value, dict) and str(value.get("url") or "").startswith("http"):
+                result.append(str(value["url"]))
+                break
+    return list(dict.fromkeys(result))
 
 
 def _list(value: object) -> list[object]:

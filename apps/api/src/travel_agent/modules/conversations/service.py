@@ -46,6 +46,12 @@ class ToolRuntime(Protocol):
     ) -> ToolResult: ...
 
 
+class KnowledgeRuntime(Protocol):
+    async def capture_place_results(
+        self, owner_user_id: str, data: dict[str, object], reason: str = "map_refresh"
+    ) -> tuple[object, ...]: ...
+
+
 class Clock(Protocol):
     def now(self) -> datetime: ...
 
@@ -64,7 +70,13 @@ class ConversationStore(Protocol):
         payload: dict[str, object],
         created_at: datetime,
     ) -> None: ...
-    async def complete(self, run_id: str, message: ChatMessage, completed_at: datetime) -> None: ...
+    async def complete(
+        self,
+        run_id: str,
+        message: ChatMessage,
+        completed_at: datetime,
+        artifacts: tuple[dict[str, object], ...] = (),
+    ) -> None: ...
     async def fail(self, run_id: str, completed_at: datetime) -> None: ...
     async def rename(self, conversation_id: str, title: str, updated_at: datetime) -> None: ...
     async def commit(self) -> None: ...
@@ -83,10 +95,12 @@ class ConversationService:
         store_factory: Callable[[], ConversationStore],
         provider: ChatProvider,
         tool_runtime: ToolRuntime,
+        knowledge_runtime: KnowledgeRuntime,
         clock: Clock,
     ) -> None:
         self._store_factory = store_factory
-        self._provider, self._tools, self._clock = provider, tool_runtime, clock
+        self._provider, self._tools = provider, tool_runtime
+        self._knowledge, self._clock = knowledge_runtime, clock
 
     async def create(self, session: AuthenticatedSession, csrf: str | None) -> Conversation:
         self._csrf(session, csrf)
@@ -136,6 +150,8 @@ class ConversationService:
         yield {"event": "run.started", "run_id": run.id, "label": "已接收消息"}
         yield {"event": "node.started", "node": "context", "label": "正在整理对话上下文"}
         sequence, chunks = 3, []
+        artifacts: list[dict[str, object]] = []
+        artifact_signatures: set[tuple[str, ...]] = set()
         try:
             await self._event(
                 run.id,
@@ -204,6 +220,10 @@ class ConversationService:
                         tool_result = await self._tools.execute(
                             call.tool_name, arguments, session.user.id
                         )
+                        if call.tool_name == "place_search":
+                            await self._knowledge.capture_place_results(
+                                session.user.id, tool_result.data, "agent_place_search"
+                            )
                         result_payload = tool_result.model_payload()
                         cache_label = {
                             "hit": "缓存命中",
@@ -229,6 +249,41 @@ class ConversationService:
                         "tool": call.tool_name,
                         "label": event_label,
                     }
+                    if event_type == "tool.completed" and call.tool_name == "guide_search_xhs":
+                        tool_data = result_payload.get("data")
+                        guides = tool_data.get("guides", []) if isinstance(tool_data, dict) else []
+                        if isinstance(guides, list):
+                            candidate_ids = tuple(
+                                str(guide.get("candidate_id"))
+                                for guide in guides
+                                if isinstance(guide, dict) and guide.get("candidate_id")
+                            )
+                            artifact: dict[str, object] = {
+                                "type": "guide_candidates",
+                                "guides": [
+                                    {
+                                        key: value
+                                        for key, value in guide.items()
+                                        if key
+                                        in {
+                                            "candidate_id",
+                                            "title",
+                                            "author",
+                                            "summary",
+                                            "url",
+                                            "status",
+                                        }
+                                    }
+                                    for guide in guides
+                                    if isinstance(guide, dict) and guide.get("candidate_id")
+                                ],
+                            }
+                            if artifact["guides"] and candidate_ids not in artifact_signatures:
+                                artifact_signatures.add(candidate_ids)
+                                artifacts.append(artifact)
+                                await self._event(run.id, sequence, "artifact.guides", artifact)
+                                sequence += 1
+                                yield {"event": "artifact.guides", "artifact": artifact}
                     model_messages.append(
                         {
                             "role": "tool",
@@ -261,7 +316,7 @@ class ConversationService:
                 new_uuid7(), conversation_id, "assistant", answer, self._clock.now()
             )
             async with self._store_factory() as store:
-                await store.complete(run.id, assistant, self._clock.now())
+                await store.complete(run.id, assistant, self._clock.now(), tuple(artifacts))
                 await store.event(
                     run.id, sequence, "run.completed", {"label": "回答已完成"}, self._clock.now()
                 )

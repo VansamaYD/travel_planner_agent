@@ -18,6 +18,7 @@ class ChatMessage:
     role: str
     content: str
     created_at: datetime
+    artifacts: tuple[dict[str, object], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -32,7 +32,9 @@ class FakeProvider:
         self.calls = 0
         self.fail = False
 
-    async def execute(self, operation: str, args: dict[str, object]) -> dict[str, object]:
+    async def execute(
+        self, operation: str, args: dict[str, object], owner_user_id: str = ""
+    ) -> dict[str, object]:
         self.calls += 1
         if self.fail:
             raise ToolUnavailableError("upstream unavailable")
@@ -105,7 +107,7 @@ async def test_tool_gateway_caches_records_usage_and_serves_stale_on_failure(
 async def test_guide_results_are_encrypted_and_scoped_to_user(
     client: httpx.AsyncClient, settings: Settings
 ) -> None:
-    owner_id, _ = await initialize(client)
+    owner_id, csrf = await initialize(client)
     database = Database.from_settings(settings)
     protector = AesGcmTextProtector(resolve_protection_key(settings))
     clock = MutableClock(datetime(2026, 8, 31, tzinfo=UTC))
@@ -113,7 +115,9 @@ async def test_guide_results_are_encrypted_and_scoped_to_user(
     class GuideProvider:
         name = "xiaohongshu"
 
-        async def execute(self, operation: str, args: dict[str, object]) -> dict[str, object]:
+        async def execute(
+            self, operation: str, args: dict[str, object], owner_user_id: str = ""
+        ) -> dict[str, object]:
             return {
                 "guides": [
                     {
@@ -136,7 +140,7 @@ async def test_guide_results_are_encrypted_and_scoped_to_user(
     )
     await gateway.execute("guide_search_xhs", {"query": "苏州攻略"}, owner_id)
 
-    listed = await client.get("/api/v1/guides")
+    listed = await client.get("/api/v1/guides?scope=all")
     assert listed.status_code == 200
     assert listed.json()["data"][0]["title"] == "苏州两日攻略"
     assert listed.json()["data"][0]["url"].startswith("https://www.xiaohongshu.com/")
@@ -146,3 +150,19 @@ async def test_guide_results_are_encrypted_and_scoped_to_user(
     await database.dispose()
     assert row.owner_user_id == owner_id
     assert "苏州两日攻略".encode() not in row.title_ciphertext
+
+    guide_id = listed.json()["data"][0]["id"]
+    updated = await client.patch(
+        f"/api/v1/guides/{guide_id}",
+        headers={"X-CSRF-Token": csrf},
+        json={"city": "苏州", "pinned": True, "user_notes": "优先参考园林路线"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["data"]["city"] == "苏州"
+    assert updated.json()["data"]["pinned"] is True
+
+    deleted = await client.delete(
+        f"/api/v1/guides/{guide_id}",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert deleted.status_code == 204

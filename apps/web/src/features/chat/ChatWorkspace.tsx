@@ -10,8 +10,9 @@ import {
   type ChatMessage,
   type Conversation,
 } from '../../shared/api/conversations'
+import { GuideCandidateCards } from './GuideCandidateCards'
 
-interface ChatWorkspaceProps { session: SessionData }
+interface ChatWorkspaceProps { session: SessionData; onOpenLibrary: () => void }
 interface ActivityStep { key: string; label: string; status: 'active' | 'done' | 'failed' }
 
 const suggestions = [
@@ -21,7 +22,7 @@ const suggestions = [
   ['整理攻略', '我有多份旅游攻略需要整理，请先告诉我如何提供资料。'],
 ] as const
 
-export function ChatWorkspace({ session }: ChatWorkspaceProps) {
+export function ChatWorkspace({ session, onOpenLibrary }: ChatWorkspaceProps) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -119,6 +120,11 @@ export function ChatWorkspace({ session }: ChatWorkspaceProps) {
       failActivity(label)
       return
     }
+    if (event.event === 'artifact.guides' && event.artifact) {
+      setMessages((items) => items.map((item) => item.id === assistantId
+        ? { ...item, artifacts: [...item.artifacts, event.artifact!] } : item))
+      return
+    }
     if (event.label) {
       const status: ActivityStep['status'] = event.event.endsWith('.failed')
         ? 'failed' : event.event.endsWith('.completed') ? 'done' : 'active'
@@ -154,7 +160,8 @@ export function ChatWorkspace({ session }: ChatWorkspaceProps) {
       {loading && <p className="chat-loading">正在读取对话…</p>}
       {messages.map((message) => <article className={`chat-message is-${message.role}`} key={message.id}>
         <span>{message.role === 'assistant' ? '旅' : session.user.display_name.slice(0, 1)}</span>
-        <div>{message.content ? <MessageContent content={message.content} /> : <i className="typing-dot">●●●</i>}</div>
+        <div>{message.content ? <MessageContent content={message.content} /> : <i className="typing-dot">●●●</i>}{message.artifacts.map((artifact, index) => artifact.type === 'guide_candidates'
+          ? <GuideCandidateCards artifact={artifact} key={`${message.id}-${index}`} onOpenLibrary={onOpenLibrary} session={session} /> : null)}</div>
       </article>)}
       {activity.length > 0 && <details className="agent-activity" key={activityKey} open={sending || undefined}>
         <summary><span className={sending ? 'activity-pulse' : ''} />{sending ? activity.at(-1)?.label : '本次执行详情'}<small>{sending ? '进行中' : '已完成'}</small></summary>
@@ -176,7 +183,7 @@ export function ChatWorkspace({ session }: ChatWorkspaceProps) {
 }
 
 function localMessage(id: string, role: ChatMessage['role'], content: string): ChatMessage {
-  return { id, role, content, created_at: new Date().toISOString() }
+  return { id, role, content, created_at: new Date().toISOString(), artifacts: [] }
 }
 
 function messageOf(reason: unknown): string {

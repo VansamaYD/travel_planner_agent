@@ -27,7 +27,9 @@ class Clock(Protocol):
 class ToolProvider(Protocol):
     name: str
 
-    async def execute(self, operation: str, args: dict[str, object]) -> dict[str, object]: ...
+    async def execute(
+        self, operation: str, args: dict[str, object], owner_user_id: str = ""
+    ) -> dict[str, object]: ...
 
 
 class ToolStore(Protocol):
@@ -65,11 +67,39 @@ class ToolStore(Protocol):
         guides: list[dict[str, object]],
         fetched_at: datetime,
         expires_at: datetime,
-    ) -> None: ...
+    ) -> dict[str, str]: ...
     async def purge_expired(self, before: datetime, limit: int = 100) -> int: ...
     async def list_guides(
-        self, owner_user_id: str, limit: int = 50
+        self, owner_user_id: str, limit: int = 50, library_only: bool = False
     ) -> tuple[GuideCandidate, ...]: ...
+    async def get_guide(self, owner_user_id: str, guide_id: str) -> GuideCandidate | None: ...
+    async def guide_credentials(
+        self, owner_user_id: str, guide_id: str
+    ) -> tuple[str, str] | None: ...
+    async def set_guide_status(
+        self, owner_user_id: str, guide_id: str, status: str, updated_at: datetime
+    ) -> bool: ...
+    async def save_guide_detail(
+        self,
+        owner_user_id: str,
+        guide_id: str,
+        detail: dict[str, object],
+        fetched_at: datetime,
+        expires_at: datetime,
+    ) -> GuideCandidate | None: ...
+    async def update_guide(
+        self,
+        owner_user_id: str,
+        guide_id: str,
+        *,
+        title: str | None,
+        city: str | None,
+        content: str | None,
+        user_notes: str | None,
+        pinned: bool | None,
+        updated_at: datetime,
+    ) -> GuideCandidate | None: ...
+    async def delete_guide(self, owner_user_id: str, guide_id: str) -> bool: ...
     async def usage_summary(
         self, owner_user_id: str, since: datetime
     ) -> tuple[dict[str, object], ...]: ...
@@ -91,6 +121,7 @@ class RegisteredTool:
     provider: ToolProvider
     label: str
     private_scope: bool = False
+    expose_to_model: bool = True
 
 
 class ToolGateway:
@@ -106,7 +137,9 @@ class ToolGateway:
         self._failures: dict[str, tuple[int, datetime]] = {}
 
     def model_descriptors(self) -> tuple[dict[str, object], ...]:
-        return tuple(tool.descriptor.model_schema() for tool in self._tools.values())
+        return tuple(
+            tool.descriptor.model_schema() for tool in self._tools.values() if tool.expose_to_model
+        )
 
     def capabilities(self) -> tuple[dict[str, object], ...]:
         return tuple(
@@ -124,9 +157,84 @@ class ToolGateway:
         tool = self._tools.get(name)
         return tool.label if tool else name
 
-    async def list_guides(self, owner_user_id: str, limit: int = 50) -> tuple[GuideCandidate, ...]:
+    async def list_guides(
+        self, owner_user_id: str, limit: int = 50, library_only: bool = False
+    ) -> tuple[GuideCandidate, ...]:
         async with self._store_factory() as store:
-            return await store.list_guides(owner_user_id, limit)
+            return await store.list_guides(owner_user_id, limit, library_only)
+
+    async def get_guide(self, owner_user_id: str, guide_id: str) -> GuideCandidate | None:
+        async with self._store_factory() as store:
+            return await store.get_guide(owner_user_id, guide_id)
+
+    async def update_guide(
+        self,
+        owner_user_id: str,
+        guide_id: str,
+        *,
+        title: str | None = None,
+        city: str | None = None,
+        content: str | None = None,
+        user_notes: str | None = None,
+        pinned: bool | None = None,
+    ) -> GuideCandidate | None:
+        async with self._store_factory() as store:
+            value = await store.update_guide(
+                owner_user_id,
+                guide_id,
+                title=title,
+                city=city,
+                content=content,
+                user_notes=user_notes,
+                pinned=pinned,
+                updated_at=self._clock.now(),
+            )
+            await store.commit()
+            return value
+
+    async def delete_guide(self, owner_user_id: str, guide_id: str) -> bool:
+        async with self._store_factory() as store:
+            deleted = await store.delete_guide(owner_user_id, guide_id)
+            await store.commit()
+            return deleted
+
+    async def import_guide(self, owner_user_id: str, guide_id: str) -> GuideCandidate:
+        async with self._store_factory() as store:
+            credentials = await store.guide_credentials(owner_user_id, guide_id)
+            if credentials is None:
+                raise ToolInputError("攻略候选不存在。")
+            await store.set_guide_status(owner_user_id, guide_id, "downloading", self._clock.now())
+            await store.commit()
+        feed_id, token = credentials
+        if not token:
+            await self._mark_guide_failed(owner_user_id, guide_id)
+            raise ToolInputError("搜索结果缺少详情访问令牌, 请重新搜索后再保存。")
+        try:
+            result = await self.execute(
+                "guide_detail_xhs",
+                {"feed_id": feed_id, "xsec_token": token},
+                owner_user_id,
+            )
+            async with self._store_factory() as store:
+                value = await store.save_guide_detail(
+                    owner_user_id,
+                    guide_id,
+                    result.data,
+                    result.queried_at,
+                    result.expires_at,
+                )
+                await store.commit()
+            if value is None:
+                raise ToolInputError("攻略候选不存在。")
+            return value
+        except Exception:
+            await self._mark_guide_failed(owner_user_id, guide_id)
+            raise
+
+    async def _mark_guide_failed(self, owner_user_id: str, guide_id: str) -> None:
+        async with self._store_factory() as store:
+            await store.set_guide_status(owner_user_id, guide_id, "failed", self._clock.now())
+            await store.commit()
 
     def now(self) -> datetime:
         return self._clock.now()
@@ -187,14 +295,30 @@ class ToolGateway:
         started = time.perf_counter()
         try:
             self._check_circuit(tool)
-            data = await tool.provider.execute(tool.descriptor.name, args)
+            data = await tool.provider.execute(tool.descriptor.name, args, owner_user_id)
             now = self._clock.now()
             expires_at = now + timedelta(seconds=tool.descriptor.ttl_seconds)
             stale_until = expires_at + timedelta(seconds=tool.descriptor.stale_seconds)
-            result = ToolResult(
-                data, tool.provider.name, tool.descriptor.name, now, expires_at, "miss"
-            )
             async with self._store_factory() as store:
+                if tool.descriptor.name == "guide_search_xhs":
+                    guides = data.get("guides")
+                    if isinstance(guides, list):
+                        query = str(data.get("query") or "")
+                        normalized_guides = [item for item in guides if isinstance(item, dict)]
+                        for guide in normalized_guides:
+                            guide["source_query"] = query
+                        identities = await store.upsert_guides(
+                            owner_user_id,
+                            tool.provider.name,
+                            normalized_guides,
+                            now,
+                            expires_at,
+                        )
+                        for guide in normalized_guides:
+                            external_id = str(guide.get("id") or guide.get("url") or "")
+                            if external_id in identities:
+                                guide["candidate_id"] = identities[external_id]
+                                guide["status"] = "discovered"
                 await store.put_cache(
                     key_hash=key_hash,
                     provider=tool.provider.name,
@@ -205,16 +329,9 @@ class ToolGateway:
                     expires_at=expires_at,
                     stale_until=stale_until,
                 )
-                if tool.descriptor.name == "guide_search_xhs":
-                    guides = data.get("guides")
-                    if isinstance(guides, list):
-                        await store.upsert_guides(
-                            owner_user_id,
-                            tool.provider.name,
-                            [item for item in guides if isinstance(item, dict)],
-                            now,
-                            expires_at,
-                        )
+                result = ToolResult(
+                    data, tool.provider.name, tool.descriptor.name, now, expires_at, "miss"
+                )
                 await self._usage(
                     store,
                     owner_user_id,

@@ -47,6 +47,7 @@ export interface ItineraryMapPoint {
   address: string
   map_url: string
   status: 'resolved' | 'unresolved'
+  knowledge_card_id: string | null
 }
 
 export interface ItineraryMapData {

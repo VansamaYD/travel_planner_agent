@@ -51,3 +51,15 @@ class AgentRunEventRow(Base):
     event_type: Mapped[str] = mapped_column(String(48))
     payload_ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ConversationMessageArtifactRow(Base):
+    __tablename__ = "conversation_message_artifacts"
+    __table_args__ = (Index("ix_conversation_artifacts_message", "message_id", "created_at"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    message_id: Mapped[str] = mapped_column(
+        ForeignKey("conversation_messages.id", ondelete="CASCADE")
+    )
+    artifact_type: Mapped[str] = mapped_column(String(40))
+    payload_ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

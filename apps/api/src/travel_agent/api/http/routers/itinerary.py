@@ -115,6 +115,7 @@ class MapPointData(BaseModel):
     address: str
     map_url: str
     status: Literal["resolved", "unresolved"]
+    knowledge_card_id: str | None = None
 
 
 class ItineraryMapData(BaseModel):
@@ -254,12 +255,42 @@ async def get_itinerary_map_points(
         city = day.city
         place_name = item.place_name or item.title
         map_url = "https://uri.amap.com/search?" + urlencode_map(place_name, city)
+        cached_card = await container.knowledge_service.find_place(
+            session.user.id, place_name, city
+        )
+        if (
+            cached_card is not None
+            and cached_card.longitude is not None
+            and cached_card.latitude is not None
+            and (
+                cached_card.expires_at is None
+                or cached_card.expires_at > container.tool_gateway.now()
+            )
+        ):
+            return MapPointData(
+                logical_id=item.logical_id,
+                day_id=day.id,
+                day_index=day_index,
+                sequence=sequence,
+                city=city,
+                title=item.title,
+                place_name=place_name,
+                longitude=cached_card.longitude,
+                latitude=cached_card.latitude,
+                address=cached_card.address,
+                map_url=map_url,
+                status="resolved",
+                knowledge_card_id=cached_card.id,
+            )
         try:
             async with semaphore:
                 result = await container.tool_gateway.execute(
                     "place_search", {"query": place_name, "city": city}, session.user.id
                 )
             places = result.data.get("places")
+            cards = await container.knowledge_service.capture_place_results(
+                session.user.id, result.data, "itinerary_map"
+            )
             place = places[0] if isinstance(places, list) and places else {}
             if isinstance(place, dict):
                 longitude = _float_or_none(place.get("longitude"))
@@ -279,6 +310,7 @@ async def get_itinerary_map_points(
                     address=str(place.get("address") or ""),
                     map_url=map_url,
                     status="resolved",
+                    knowledge_card_id=cards[0].id if cards else None,
                 )
         except ToolError:
             pass

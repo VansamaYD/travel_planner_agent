@@ -61,8 +61,19 @@ class GuideCandidate:
     url: str
     author: str
     summary: str
+    city: str
+    source_query: str
+    status: str
+    pinned: bool
+    content: str
+    images: tuple[str, ...]
+    comments: tuple[dict[str, object], ...]
+    metadata: dict[str, object]
+    user_notes: str
     fetched_at: datetime
     expires_at: datetime
+    detail_fetched_at: datetime | None
+    detail_expires_at: datetime | None
 
 
 class ToolError(Exception):

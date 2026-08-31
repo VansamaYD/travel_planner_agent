@@ -53,3 +53,52 @@ async def test_xhs_connector_calls_only_read_search_tool_and_normalizes_links() 
     assert isinstance(guides, list)
     assert guides[0]["title"] == "苏州两日游"
     assert guides[0]["url"].startswith("https://www.xiaohongshu.com/explore/note-1")
+
+
+@pytest.mark.asyncio
+async def test_xhs_connector_reads_and_normalizes_selected_guide_detail() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        if payload["method"] == "initialize":
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {}})
+        if payload["method"] == "notifications/initialized":
+            return httpx.Response(202)
+        assert payload["params"] == {
+            "name": "get_feed_detail",
+            "arguments": {
+                "feed_id": "note-1",
+                "xsec_token": "token-1",
+                "load_all_comments": False,
+            },
+        }
+        detail = {
+            "data": {
+                "note": {
+                    "noteId": "note-1",
+                    "title": "苏州两日游",
+                    "desc": "第一天园林。第二天古镇",
+                    "user": {"nickname": "A"},
+                    "imageList": [{"urlDefault": "https://img.example/1.jpg"}],
+                    "interactInfo": {"likedCount": "12", "commentCount": "3"},
+                },
+                "comments": [{"content": "路线很顺", "user": {"nickname": "B"}}],
+            }
+        }
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {"content": [{"type": "text", "text": json.dumps(detail)}]},
+            },
+        )
+
+    provider = XiaohongshuMcpProvider(
+        "http://worker:18060/mcp", 30, 8, transport=httpx.MockTransport(handler)
+    )
+    result = await provider.execute(
+        "guide_detail_xhs", {"feed_id": "note-1", "xsec_token": "token-1"}
+    )
+    assert result["content"] == "第一天园林。第二天古镇"
+    assert result["images"] == ["https://img.example/1.jpg"]
+    assert result["comments"][0]["content"] == "路线很顺"

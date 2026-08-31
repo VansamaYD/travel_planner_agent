@@ -12,6 +12,7 @@ from travel_agent.modules.conversations.domain import AgentRun, ChatMessage, Con
 from travel_agent.modules.conversations.models import (
     AgentRunEventRow,
     AgentRunRow,
+    ConversationMessageArtifactRow,
     ConversationMessageRow,
     ConversationRow,
 )
@@ -79,11 +80,32 @@ class SqlAlchemyConversationStore:
         return self._conversation(row) if row else None
 
     async def messages(self, conversation_id: str) -> tuple[ChatMessage, ...]:
-        rows = await self.session.scalars(
-            select(ConversationMessageRow)
-            .where(ConversationMessageRow.conversation_id == conversation_id)
-            .order_by(ConversationMessageRow.created_at)
+        rows = tuple(
+            await self.session.scalars(
+                select(ConversationMessageRow)
+                .where(ConversationMessageRow.conversation_id == conversation_id)
+                .order_by(ConversationMessageRow.created_at)
+            )
         )
+        message_ids = [row.id for row in rows]
+        artifact_rows = (
+            tuple(
+                await self.session.scalars(
+                    select(ConversationMessageArtifactRow)
+                    .where(ConversationMessageArtifactRow.message_id.in_(message_ids))
+                    .order_by(ConversationMessageArtifactRow.created_at)
+                )
+            )
+            if message_ids
+            else ()
+        )
+        artifacts: dict[str, list[dict[str, object]]] = {}
+        for artifact in artifact_rows:
+            payload = json.loads(
+                self._protector.decrypt(artifact.payload_ciphertext, context="message.artifact")
+            )
+            if isinstance(payload, dict):
+                artifacts.setdefault(artifact.message_id, []).append(payload)
         return tuple(
             ChatMessage(
                 row.id,
@@ -91,6 +113,7 @@ class SqlAlchemyConversationStore:
                 row.role,
                 self._protector.decrypt(row.content_ciphertext, context="conversation.message"),
                 row.created_at,
+                tuple(artifacts.get(row.id, [])),
             )
             for row in rows
         )
@@ -134,8 +157,29 @@ class SqlAlchemyConversationStore:
             )
         )
 
-    async def complete(self, run_id: str, message: ChatMessage, completed_at: datetime) -> None:
+    async def complete(
+        self,
+        run_id: str,
+        message: ChatMessage,
+        completed_at: datetime,
+        artifacts: tuple[dict[str, object], ...] = (),
+    ) -> None:
         self._add_message(message)
+        await self.session.flush()
+        for artifact in artifacts:
+            artifact_type = str(artifact.get("type") or "unknown")[:40]
+            self.session.add(
+                ConversationMessageArtifactRow(
+                    id=new_uuid7(),
+                    message_id=message.id,
+                    artifact_type=artifact_type,
+                    payload_ciphertext=self._protector.encrypt(
+                        json.dumps(artifact, ensure_ascii=False, separators=(",", ":")),
+                        context="message.artifact",
+                    ),
+                    created_at=completed_at,
+                )
+            )
         await self.session.execute(
             update(AgentRunRow)
             .where(AgentRunRow.id == run_id)

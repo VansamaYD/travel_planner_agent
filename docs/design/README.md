@@ -47,6 +47,7 @@
 | DD-11 | [详细设计最终评审记录](./11-detailed-design-review-record.md) | 迭代校验结果、遗留风险、设计准出结论 | 已评审 |
 | DD-12 | [攻略知识库与检索详细设计](./12-guide-knowledge-base-and-retrieval-design.md) | 导入、Claim、加密检索、RAG、模型读取与质量门 | 已评审 |
 | DD-13 | [实现架构、设计模式与扩展契约](./13-implementation-architecture-patterns-and-extension-contracts.md) | 模块边界、UoW、模式、依赖规则、扩展点与纵向切片 | 已评审 |
+| DD-14 | [结构化攻略、地点卡与视觉流水线](./14-structured-guide-place-card-and-vision-pipeline.md) | 攻略选择下载、地点实体复用、多源合并、视觉去重与失效策略 | 实现基线 |
 
 ## 4. 设计层级与依赖方向
 

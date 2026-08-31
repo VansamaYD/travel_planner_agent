@@ -11,6 +11,7 @@ from travel_agent.api.http.problems import (
     access_error_handler,
     conversation_error_handler,
     itinerary_error_handler,
+    knowledge_error_handler,
     planning_error_handler,
     trip_error_handler,
 )
@@ -21,6 +22,7 @@ from travel_agent.api.http.routers.family_members import router as family_member
 from travel_agent.api.http.routers.guides import router as guides_router
 from travel_agent.api.http.routers.health import router as health_router
 from travel_agent.api.http.routers.itinerary import router as itinerary_router
+from travel_agent.api.http.routers.knowledge import router as knowledge_router
 from travel_agent.api.http.routers.planning import router as planning_router
 from travel_agent.api.http.routers.tools import router as tools_router
 from travel_agent.api.http.routers.trips import router as trips_router
@@ -29,6 +31,7 @@ from travel_agent.bootstrap.settings import Settings
 from travel_agent.modules.access.application.errors import AccessError
 from travel_agent.modules.conversations.service import ConversationError
 from travel_agent.modules.itinerary.application.errors import ItineraryError
+from travel_agent.modules.knowledge.domain import KnowledgeError
 from travel_agent.modules.planning.application.errors import PlanningError
 from travel_agent.modules.trips.application.errors import TripError
 
@@ -58,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(ItineraryError, itinerary_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(PlanningError, planning_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(ConversationError, conversation_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(KnowledgeError, knowledge_error_handler)  # type: ignore[arg-type]
     app.include_router(health_router)
     app.include_router(access_router)
     app.include_router(conversations_router)
@@ -67,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(family_invites_router)
     app.include_router(trips_router)
     app.include_router(itinerary_router)
+    app.include_router(knowledge_router)
     app.include_router(planning_router)
     return app
 

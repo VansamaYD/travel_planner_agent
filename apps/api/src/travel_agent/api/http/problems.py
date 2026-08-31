@@ -29,6 +29,7 @@ from travel_agent.modules.itinerary.application.errors import (
     ItineraryPermissionDeniedError,
     ItineraryVersionConflictError,
 )
+from travel_agent.modules.knowledge.domain import KnowledgeError, VisionUnavailableError
 from travel_agent.modules.planning.application.errors import (
     PlanningError,
     PlanningInvalidInputError,
@@ -187,6 +188,24 @@ async def conversation_error_handler(request: Request, error: ConversationError)
             "instance": request.url.path,
             "request_id": getattr(request.state, "request_id", None),
             "retryable": False,
+        },
+    )
+
+
+async def knowledge_error_handler(request: Request, error: KnowledgeError) -> JSONResponse:
+    status_code = 503 if isinstance(error, VisionUnavailableError) else 422
+    return JSONResponse(
+        status_code=status_code,
+        media_type="application/problem+json",
+        content={
+            "type": f"https://travel-agent.local/problems/{error.code.replace('_', '-')}",
+            "title": "知识库请求无法完成",
+            "status": status_code,
+            "code": error.code,
+            "detail": str(error) or "知识库请求无法完成。",
+            "instance": request.url.path,
+            "request_id": getattr(request.state, "request_id", None),
+            "retryable": isinstance(error, VisionUnavailableError),
         },
     )
 

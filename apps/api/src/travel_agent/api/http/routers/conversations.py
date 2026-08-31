@@ -28,6 +28,7 @@ class MessageData(BaseModel):
     role: str
     content: str
     created_at: str
+    artifacts: tuple[dict[str, object], ...] = ()
 
 
 class SendRequest(BaseModel):
@@ -60,7 +61,11 @@ def _conversation(value: Conversation) -> ConversationData:
 
 def _message(value: ChatMessage) -> MessageData:
     return MessageData(
-        id=value.id, role=value.role, content=value.content, created_at=value.created_at.isoformat()
+        id=value.id,
+        role=value.role,
+        content=value.content,
+        created_at=value.created_at.isoformat(),
+        artifacts=value.artifacts,
     )
 
 

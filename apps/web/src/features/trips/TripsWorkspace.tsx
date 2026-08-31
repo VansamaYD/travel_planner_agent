@@ -88,7 +88,7 @@ export function TripsWorkspace({ family, session }: Props) {
       const [trip, history] = await Promise.all([getTrip(id), listTripVersions(id)])
       setSelected(trip); setTitle(trip.title); setVisibility(trip.visibility)
       setRequirements(trip.requirements); setSelectedMembers(memberIds(trip, members))
-      setVersions(history); setShowForm(true)
+      setVersions(history); setShowForm(false)
     } catch (reason) { setError(reason instanceof Error ? reason.message : '旅行加载失败') }
   }
 

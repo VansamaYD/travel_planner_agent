@@ -16,6 +16,7 @@ import {
   type PlanningRun,
 } from '../../shared/api/planning'
 import { ItineraryMap } from './ItineraryMap'
+import { PlaceKnowledgeButton } from './PlaceKnowledgeButton'
 
 interface Props { tripId: string; csrfToken: string }
 
@@ -174,7 +175,7 @@ export function ItineraryEditor({ tripId, csrfToken }: Props) {
                       <div className="item-order-actions"><button className="small-button" disabled={itemIndex === 0} onClick={() => moveItem(dayIndex, itemIndex, -1)} type="button">上移</button><button className="small-button" disabled={itemIndex === day.items.length - 1} onClick={() => moveItem(dayIndex, itemIndex, 1)} type="button">下移</button><button className="danger-button" onClick={() => updateDay(dayIndex, { items: day.items.filter((_, index) => index !== itemIndex) })} type="button">移除活动</button></div>
                     </div>
                   ) : (
-                    <div className="itinerary-item" key={item.logical_id ?? itemIndex}><b className="route-sequence">{itemIndex + 1}</b><time>{item.start_time ?? '--:--'}</time><div><strong>{item.title}</strong><span>{item.place_name || '地点待定'}{item.cost_cents === null ? '' : ` · ¥${item.cost_cents / 100}`}</span></div>{item.transport_to_next && <small>下一站：{item.transport_to_next}{item.travel_minutes_to_next ? ` ${item.travel_minutes_to_next} 分钟` : ''}</small>}</div>
+                    <div className="itinerary-item" key={item.logical_id ?? itemIndex}><b className="route-sequence">{itemIndex + 1}</b><time>{item.start_time ?? '--:--'}</time><div><strong>{item.title}</strong><span>{item.place_name || '地点待定'}{item.cost_cents === null ? '' : ` · ¥${item.cost_cents / 100}`}</span><PlaceKnowledgeButton city={day.city} name={item.place_name || item.title} /></div>{item.transport_to_next && <small>下一站：{item.transport_to_next}{item.travel_minutes_to_next ? ` ${item.travel_minutes_to_next} 分钟` : ''}</small>}</div>
                   ))}
                   {!editing && day.items.length === 0 && <p className="muted day-empty">暂无活动</p>}
                 </div>

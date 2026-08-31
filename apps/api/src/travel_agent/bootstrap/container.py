@@ -24,6 +24,10 @@ from travel_agent.modules.conversations.service import ConversationService
 from travel_agent.modules.itinerary.application.ports import ItineraryStore
 from travel_agent.modules.itinerary.application.service import ItineraryService
 from travel_agent.modules.itinerary.infrastructure.store import SqlAlchemyItineraryStore
+from travel_agent.modules.knowledge.provider import PlaceKnowledgeProvider
+from travel_agent.modules.knowledge.service import KnowledgeService, KnowledgeStore
+from travel_agent.modules.knowledge.store import SqlAlchemyKnowledgeStore
+from travel_agent.modules.knowledge.vision import DeepSeekVisionProvider
 from travel_agent.modules.operations.application.health import HealthService
 from travel_agent.modules.operations.infrastructure.health_checks import (
     DatabaseReadinessCheck,
@@ -40,6 +44,7 @@ from travel_agent.modules.planning.infrastructure.store import SqlAlchemyPlannin
 from travel_agent.modules.tools.domain import ToolDescriptor
 from travel_agent.modules.tools.providers import (
     AmapProvider,
+    GuideLibraryProvider,
     QWeatherProvider,
     XiaohongshuMcpProvider,
 )
@@ -64,6 +69,7 @@ class Container:
     planning_service: PlanningService
     conversation_service: ConversationService
     tool_gateway: ToolGateway
+    knowledge_service: KnowledgeService
     login_rate_limiter: LoginRateLimiter
     invite_registration_rate_limiter: LoginRateLimiter
 
@@ -101,6 +107,9 @@ def build_container(settings: Settings | None = None) -> Container:
     def tool_store_factory() -> SqlAlchemyToolStore:
         return SqlAlchemyToolStore(database.session_factory, protector)
 
+    def knowledge_store_factory() -> KnowledgeStore:
+        return SqlAlchemyKnowledgeStore(database.session_factory, protector)
+
     password_hasher = Argon2idHasher()
     token_issuer = SecureTokenIssuer()
     access_service = AccessService(
@@ -137,6 +146,32 @@ def build_container(settings: Settings | None = None) -> Container:
     qweather_key = _secret(resolved_settings.qweather_api_key)
     amap_provider = AmapProvider(amap_key, resolved_settings.external_tool_timeout_seconds)
     registered_tools: list[RegisteredTool] = []
+    registered_tools.append(
+        RegisteredTool(
+            ToolDescriptor(
+                "guide_library_search",
+                (
+                    "检索用户已经选择并下载的私人攻略库。"
+                    "在制定或讨论计划前, 优先用它查找用户确认过的攻略内容。"
+                ),
+                {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "要检索的主题或地点"},
+                        "city": {"type": "string", "description": "可选城市"},
+                    },
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+                "local_guide_library",
+                60,
+                0,
+            ),
+            GuideLibraryProvider(tool_store_factory),
+            "检索私人攻略库",
+            private_scope=True,
+        )
+    )
     if amap_key:
         registered_tools.extend(
             [
@@ -212,33 +247,143 @@ def build_container(settings: Settings | None = None) -> Container:
             )
         )
     if resolved_settings.xhs_research_enabled:
-        registered_tools.append(
-            RegisteredTool(
-                ToolDescriptor(
-                    "guide_search_xhs",
-                    (
-                        "使用用户主动启用的只读 Worker 搜索小红书旅游攻略。"
-                        "结果仅作为社区经验, 不是实时事实。"
-                    ),
-                    {
-                        "type": "object",
-                        "properties": {"query": {"type": "string"}},
-                        "required": ["query"],
-                        "additionalProperties": False,
-                    },
-                    "xiaohongshu",
-                    resolved_settings.xhs_search_cache_ttl_seconds,
-                    resolved_settings.external_cache_stale_seconds,
-                ),
-                XiaohongshuMcpProvider(
-                    resolved_settings.xhs_mcp_endpoint,
-                    resolved_settings.xhs_search_timeout_seconds,
-                    resolved_settings.xhs_max_results_per_query,
-                ),
-                "搜索小红书攻略",
-                private_scope=True,
-            )
+        xhs_provider = XiaohongshuMcpProvider(
+            resolved_settings.xhs_mcp_endpoint,
+            resolved_settings.xhs_search_timeout_seconds,
+            resolved_settings.xhs_max_results_per_query,
         )
+        registered_tools.extend(
+            [
+                RegisteredTool(
+                    ToolDescriptor(
+                        "guide_search_xhs",
+                        (
+                            "使用用户主动启用的只读 Worker 搜索小红书旅游攻略。"
+                            "结果仅作为社区经验, 不是实时事实。"
+                        ),
+                        {
+                            "type": "object",
+                            "properties": {"query": {"type": "string"}},
+                            "required": ["query"],
+                            "additionalProperties": False,
+                        },
+                        "xiaohongshu",
+                        resolved_settings.xhs_search_cache_ttl_seconds,
+                        resolved_settings.external_cache_stale_seconds,
+                    ),
+                    xhs_provider,
+                    "搜索小红书攻略",
+                    private_scope=True,
+                ),
+                RegisteredTool(
+                    ToolDescriptor(
+                        "guide_detail_xhs",
+                        "读取用户已选择的小红书攻略正文、图片、互动摘要和部分评论。",
+                        {
+                            "type": "object",
+                            "properties": {
+                                "feed_id": {"type": "string"},
+                                "xsec_token": {"type": "string"},
+                            },
+                            "required": ["feed_id", "xsec_token"],
+                            "additionalProperties": False,
+                        },
+                        "xiaohongshu",
+                        resolved_settings.xhs_detail_cache_ttl_seconds,
+                        resolved_settings.external_cache_stale_seconds,
+                    ),
+                    xhs_provider,
+                    "下载小红书攻略详情",
+                    private_scope=True,
+                    expose_to_model=False,
+                ),
+            ]
+        )
+    vision_provider = DeepSeekVisionProvider(
+        deepseek_key.get_secret_value() if deepseek_key is not None else "",
+        resolved_settings.deepseek_base_url,
+        resolved_settings.deepseek_vision_model,
+        resolved_settings.vision_timeout_seconds,
+        resolved_settings.vision_analysis_enabled,
+    )
+    knowledge_service = KnowledgeService(knowledge_store_factory, vision_provider, SystemClock())
+    registered_tools.append(
+        RegisteredTool(
+            ToolDescriptor(
+                "place_knowledge_search",
+                (
+                    "检索已沉淀的景点、餐厅、酒店和交通枢纽资料卡。"
+                    "规划地点或解释行程节点前优先使用, 可复用坐标和已核验信息。"
+                ),
+                {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "地点名称关键词"},
+                        "city": {"type": "string", "description": "可选城市"},
+                    },
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+                "local_place_knowledge",
+                60,
+                0,
+            ),
+            PlaceKnowledgeProvider(knowledge_service),
+            "检索地点知识卡",
+            private_scope=True,
+        )
+    )
+    registered_tools.append(
+        RegisteredTool(
+            ToolDescriptor(
+                "place_knowledge_upsert",
+                (
+                    "把地图、已下载攻略或用户资料中的地点事实合并到地点知识卡。"
+                    "仅在本轮已有明确证据来源时使用; 不得根据模型记忆编造。"
+                    "该卡片是建议知识, 不会直接修改正式行程。"
+                ),
+                {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "city": {"type": "string"},
+                        "entity_type": {
+                            "type": "string",
+                            "enum": [
+                                "attraction",
+                                "restaurant",
+                                "hotel",
+                                "transport_hub",
+                                "other",
+                            ],
+                        },
+                        "address": {"type": "string"},
+                        "intro": {"type": "string"},
+                        "longitude": {"type": ["number", "null"]},
+                        "latitude": {"type": ["number", "null"]},
+                        "details": {
+                            "type": "object",
+                            "description": "标签、营业时间、预约、项目、美食、价格等结构化字段",
+                        },
+                        "evidence_source": {
+                            "type": "string",
+                            "description": "本轮工具结果中的 URL、攻略 ID 或地图来源",
+                        },
+                        "observed_at": {"type": "string"},
+                        "confidence": {"type": "number", "minimum": 0.1, "maximum": 0.75},
+                    },
+                    "required": ["name", "city", "entity_type", "evidence_source"],
+                    "additionalProperties": False,
+                },
+                "local_place_knowledge",
+                60,
+                0,
+            ),
+            PlaceKnowledgeProvider(knowledge_service),
+            "更新地点知识卡",
+            private_scope=True,
+        )
+    )
     tool_gateway = ToolGateway(tool_store_factory, SystemClock(), tuple(registered_tools))
     health_service = HealthService(
         checks=(
@@ -278,9 +423,11 @@ def build_container(settings: Settings | None = None) -> Container:
             store_factory=lambda: SqlAlchemyConversationStore(database.session_factory, protector),
             provider=chat_provider,
             tool_runtime=tool_gateway,
+            knowledge_runtime=knowledge_service,
             clock=SystemClock(),
         ),
         tool_gateway=tool_gateway,
+        knowledge_service=knowledge_service,
         login_rate_limiter=LoginRateLimiter(),
         invite_registration_rate_limiter=LoginRateLimiter(attempts=3, window_seconds=600),
     )

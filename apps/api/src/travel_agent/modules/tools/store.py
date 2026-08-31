@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from types import TracebackType
 from typing import Protocol, Self
@@ -141,7 +142,8 @@ class SqlAlchemyToolStore:
         guides: list[dict[str, object]],
         fetched_at: datetime,
         expires_at: datetime,
-    ) -> None:
+    ) -> dict[str, str]:
+        identities: dict[str, str] = {}
         for guide in guides[:10]:
             external_id = str(guide.get("id") or guide.get("url") or guide.get("title") or "")
             if not external_id:
@@ -161,30 +163,184 @@ class SqlAlchemyToolStore:
                 "url": str(guide.get("url") or "")[:2000],
                 "author": str(guide.get("author") or "")[:200],
                 "summary": str(guide.get("summary") or guide.get("content") or "")[:2000],
+                "token": str(guide.get("xsec_token") or "")[:2000],
+                "source_query": str(guide.get("source_query") or "")[:300],
             }
+            city = str(guide.get("city") or _city_hint(values["source_query"]))[:100]
             if row is None:
+                row_id = new_uuid7()
                 self.session.add(
                     GuideCandidateRow(
-                        id=new_uuid7(),
+                        id=row_id,
                         owner_user_id=owner_user_id,
                         provider=provider,
                         external_id_hash=external_hash,
+                        external_id_ciphertext=self._encrypt(external_id, "guide.external_id"),
+                        access_token_ciphertext=self._optional(values["token"], "guide.token"),
+                        source_query_ciphertext=self._optional(
+                            values["source_query"], "guide.source_query"
+                        ),
+                        city_ciphertext=self._optional(city, "guide.city"),
                         title_ciphertext=self._encrypt(values["title"], "guide.title"),
                         url_ciphertext=self._optional(values["url"], "guide.url"),
                         author_ciphertext=self._optional(values["author"], "guide.author"),
                         summary_ciphertext=self._encrypt(values["summary"], "guide.summary"),
+                        content_ciphertext=None,
+                        images_ciphertext=None,
+                        comments_ciphertext=None,
+                        metadata_ciphertext=None,
+                        user_notes_ciphertext=None,
+                        status="discovered",
+                        pinned=False,
                         published_at=None,
                         fetched_at=fetched_at,
                         expires_at=expires_at,
+                        detail_fetched_at=None,
+                        detail_expires_at=None,
+                        updated_at=fetched_at,
                     )
                 )
+                identities[external_id] = row_id
             else:
+                identities[external_id] = row.id
+                row.external_id_ciphertext = self._encrypt(external_id, "guide.external_id")
+                row.access_token_ciphertext = self._optional(values["token"], "guide.token")
+                row.source_query_ciphertext = self._optional(
+                    values["source_query"], "guide.source_query"
+                )
+                if city:
+                    row.city_ciphertext = self._encrypt(city, "guide.city")
                 row.title_ciphertext = self._encrypt(values["title"], "guide.title")
                 row.url_ciphertext = self._optional(values["url"], "guide.url")
                 row.author_ciphertext = self._optional(values["author"], "guide.author")
                 row.summary_ciphertext = self._encrypt(values["summary"], "guide.summary")
                 row.fetched_at = fetched_at
                 row.expires_at = expires_at
+                row.updated_at = fetched_at
+        return identities
+
+    async def get_guide(self, owner_user_id: str, guide_id: str) -> GuideCandidate | None:
+        row = await self.session.scalar(
+            select(GuideCandidateRow).where(
+                GuideCandidateRow.id == guide_id,
+                GuideCandidateRow.owner_user_id == owner_user_id,
+            )
+        )
+        return self._guide(row) if row else None
+
+    async def guide_credentials(self, owner_user_id: str, guide_id: str) -> tuple[str, str] | None:
+        row = await self.session.scalar(
+            select(GuideCandidateRow).where(
+                GuideCandidateRow.id == guide_id,
+                GuideCandidateRow.owner_user_id == owner_user_id,
+            )
+        )
+        if row is None or row.external_id_ciphertext is None:
+            return None
+        return (
+            self._protector.decrypt(row.external_id_ciphertext, context="guide.external_id"),
+            self._protector.decrypt(row.access_token_ciphertext, context="guide.token")
+            if row.access_token_ciphertext
+            else "",
+        )
+
+    async def set_guide_status(
+        self, owner_user_id: str, guide_id: str, status: str, updated_at: datetime
+    ) -> bool:
+        row = await self.session.scalar(
+            select(GuideCandidateRow).where(
+                GuideCandidateRow.id == guide_id,
+                GuideCandidateRow.owner_user_id == owner_user_id,
+            )
+        )
+        if row is None:
+            return False
+        row.status, row.updated_at = status, updated_at
+        return True
+
+    async def save_guide_detail(
+        self,
+        owner_user_id: str,
+        guide_id: str,
+        detail: dict[str, object],
+        fetched_at: datetime,
+        expires_at: datetime,
+    ) -> GuideCandidate | None:
+        row = await self.session.scalar(
+            select(GuideCandidateRow).where(
+                GuideCandidateRow.id == guide_id,
+                GuideCandidateRow.owner_user_id == owner_user_id,
+            )
+        )
+        if row is None:
+            return None
+        title = str(detail.get("title") or "").strip()
+        author = str(detail.get("author") or "").strip()
+        content = str(detail.get("content") or "")[:24000]
+        if title:
+            row.title_ciphertext = self._encrypt(title[:300], "guide.title")
+        if author:
+            row.author_ciphertext = self._encrypt(author[:200], "guide.author")
+        row.content_ciphertext = self._optional(content, "guide.content")
+        row.summary_ciphertext = self._encrypt(
+            (content or self._decrypt(row.summary_ciphertext, "guide.summary"))[:2000],
+            "guide.summary",
+        )
+        row.images_ciphertext = self._json_optional(detail.get("images"), "guide.images")
+        row.comments_ciphertext = self._json_optional(detail.get("comments"), "guide.comments")
+        row.metadata_ciphertext = self._json_optional(detail.get("metadata"), "guide.metadata")
+        row.status = "ready"
+        row.detail_fetched_at = fetched_at
+        row.detail_expires_at = expires_at
+        row.updated_at = fetched_at
+        await self.session.flush()
+        return self._guide(row)
+
+    async def update_guide(
+        self,
+        owner_user_id: str,
+        guide_id: str,
+        *,
+        title: str | None,
+        city: str | None,
+        content: str | None,
+        user_notes: str | None,
+        pinned: bool | None,
+        updated_at: datetime,
+    ) -> GuideCandidate | None:
+        row = await self.session.scalar(
+            select(GuideCandidateRow).where(
+                GuideCandidateRow.id == guide_id,
+                GuideCandidateRow.owner_user_id == owner_user_id,
+            )
+        )
+        if row is None:
+            return None
+        if title is not None:
+            row.title_ciphertext = self._encrypt(title[:300], "guide.title")
+        if city is not None:
+            row.city_ciphertext = self._optional(city[:100], "guide.city")
+        if content is not None:
+            row.content_ciphertext = self._optional(content[:24000], "guide.content")
+        if user_notes is not None:
+            row.user_notes_ciphertext = self._optional(user_notes[:8000], "guide.user_notes")
+        if pinned is not None:
+            row.pinned = pinned
+        row.updated_at = updated_at
+        await self.session.flush()
+        return self._guide(row)
+
+    async def delete_guide(self, owner_user_id: str, guide_id: str) -> bool:
+        row = await self.session.scalar(
+            select(GuideCandidateRow).where(
+                GuideCandidateRow.id == guide_id,
+                GuideCandidateRow.owner_user_id == owner_user_id,
+            )
+        )
+        if row is None:
+            return False
+        await self.session.delete(row)
+        return True
 
     async def commit(self) -> None:
         await self.session.commit()
@@ -203,30 +359,22 @@ class SqlAlchemyToolStore:
             )
         return len(keys)
 
-    async def list_guides(self, owner_user_id: str, limit: int = 50) -> tuple[GuideCandidate, ...]:
+    async def list_guides(
+        self, owner_user_id: str, limit: int = 50, library_only: bool = False
+    ) -> tuple[GuideCandidate, ...]:
+        statement = select(GuideCandidateRow).where(
+            GuideCandidateRow.owner_user_id == owner_user_id
+        )
+        if library_only:
+            statement = statement.where(GuideCandidateRow.status != "discovered")
         rows = await self.session.scalars(
-            select(GuideCandidateRow)
-            .where(GuideCandidateRow.owner_user_id == owner_user_id)
-            .order_by(GuideCandidateRow.fetched_at.desc())
-            .limit(limit)
+            statement.order_by(
+                GuideCandidateRow.pinned.desc(),
+                GuideCandidateRow.updated_at.desc(),
+                GuideCandidateRow.fetched_at.desc(),
+            ).limit(limit)
         )
-        return tuple(
-            GuideCandidate(
-                id=row.id,
-                provider=row.provider,
-                title=self._protector.decrypt(row.title_ciphertext, context="guide.title"),
-                url=self._protector.decrypt(row.url_ciphertext, context="guide.url")
-                if row.url_ciphertext
-                else "",
-                author=self._protector.decrypt(row.author_ciphertext, context="guide.author")
-                if row.author_ciphertext
-                else "",
-                summary=self._protector.decrypt(row.summary_ciphertext, context="guide.summary"),
-                fetched_at=_aware(row.fetched_at),
-                expires_at=_aware(row.expires_at),
-            )
-            for row in rows
-        )
+        return tuple(self._guide(row) for row in rows)
 
     async def usage_summary(
         self, owner_user_id: str, since: datetime
@@ -278,6 +426,55 @@ class SqlAlchemyToolStore:
     def _optional(self, value: str, context: str) -> bytes | None:
         return self._encrypt(value, context) if value else None
 
+    def _decrypt(self, value: bytes | None, context: str) -> str:
+        return self._protector.decrypt(value, context=context) if value else ""
+
+    def _json_optional(self, value: object, context: str) -> bytes | None:
+        if value in (None, [], {}):
+            return None
+        return self._encrypt(json.dumps(value, ensure_ascii=False), context)
+
+    def _json(self, value: bytes | None, context: str, fallback: object) -> object:
+        if value is None:
+            return fallback
+        try:
+            return json.loads(self._decrypt(value, context))
+        except json.JSONDecodeError:
+            return fallback
+
+    def _guide(self, row: GuideCandidateRow) -> GuideCandidate:
+        images = self._json(row.images_ciphertext, "guide.images", [])
+        comments = self._json(row.comments_ciphertext, "guide.comments", [])
+        metadata = self._json(row.metadata_ciphertext, "guide.metadata", {})
+        return GuideCandidate(
+            id=row.id,
+            provider=row.provider,
+            title=self._decrypt(row.title_ciphertext, "guide.title"),
+            url=self._decrypt(row.url_ciphertext, "guide.url"),
+            author=self._decrypt(row.author_ciphertext, "guide.author"),
+            summary=self._decrypt(row.summary_ciphertext, "guide.summary"),
+            city=self._decrypt(row.city_ciphertext, "guide.city"),
+            source_query=self._decrypt(row.source_query_ciphertext, "guide.source_query"),
+            status=row.status,
+            pinned=row.pinned,
+            content=self._decrypt(row.content_ciphertext, "guide.content"),
+            images=tuple(str(item) for item in images) if isinstance(images, list) else (),
+            comments=tuple(item for item in comments if isinstance(item, dict))
+            if isinstance(comments, list)
+            else (),
+            metadata=metadata if isinstance(metadata, dict) else {},
+            user_notes=self._decrypt(row.user_notes_ciphertext, "guide.user_notes"),
+            fetched_at=_aware(row.fetched_at),
+            expires_at=_aware(row.expires_at),
+            detail_fetched_at=_aware(row.detail_fetched_at) if row.detail_fetched_at else None,
+            detail_expires_at=_aware(row.detail_expires_at) if row.detail_expires_at else None,
+        )
+
 
 def _aware(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+def _city_hint(query: str) -> str:
+    match = re.search(r"([\u4e00-\u9fff]{2,12}?)(?:市)?(?:旅游|旅行|攻略|景点|美食|酒店)", query)
+    return match.group(1) if match else "未分类"

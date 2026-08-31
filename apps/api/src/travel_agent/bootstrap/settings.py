@@ -65,6 +65,13 @@ class Settings(BaseSettings):
     model_planning_max_output_tokens: int = Field(
         default=8192, ge=512, le=32768, validation_alias="MODEL_PLANNING_MAX_OUTPUT_TOKENS"
     )
+    vision_analysis_enabled: bool = Field(default=False, validation_alias="VISION_ANALYSIS_ENABLED")
+    deepseek_vision_model: str = Field(
+        default="deepseek-v4-flash-vision-exp", validation_alias="DEEPSEEK_VISION_MODEL"
+    )
+    vision_timeout_seconds: int = Field(
+        default=60, ge=10, le=120, validation_alias="VISION_TIMEOUT_SECONDS"
+    )
     amap_web_service_key: SecretStr | None = Field(
         default=None, validation_alias="AMAP_WEB_SERVICE_KEY"
     )
@@ -98,6 +105,9 @@ class Settings(BaseSettings):
     )
     xhs_search_cache_ttl_seconds: int = Field(
         default=21600, ge=300, le=604800, validation_alias="XHS_SEARCH_CACHE_TTL_SECONDS"
+    )
+    xhs_detail_cache_ttl_seconds: int = Field(
+        default=86400, ge=1800, le=2592000, validation_alias="XHS_DETAIL_CACHE_TTL_SECONDS"
     )
     xhs_max_results_per_query: int = Field(
         default=8, ge=1, le=10, validation_alias="XHS_MAX_RESULTS_PER_QUERY"
