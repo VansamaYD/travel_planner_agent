@@ -8,6 +8,8 @@ requires-python = ">=3.12,<3.14"
 dependencies = [
   "aiosqlite>=0.21,<1",
   "alembic>=1.16,<2",
+  "argon2-cffi==25.1.0",
+  "cryptography>=50,<51",
   "fastapi==0.141.1",
   "pydantic-settings>=2.10,<3",
   "sqlalchemy[asyncio]>=2.0.43,<2.1",
@@ -63,9 +65,12 @@ root_packages = ["travel_agent"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Operations application layer must not depend on frameworks"
+name = "Application layers must not depend on frameworks"
 type = "forbidden"
-source_modules = ["travel_agent.modules.operations.application"]
+source_modules = [
+  "travel_agent.modules.access.application",
+  "travel_agent.modules.operations.application",
+]
 forbidden_modules = [
   "fastapi",
   "sqlalchemy",

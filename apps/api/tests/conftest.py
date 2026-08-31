@@ -6,6 +6,8 @@ import pytest
 
 from travel_agent.api.app import create_app
 from travel_agent.bootstrap.settings import Settings
+from travel_agent.modules.access.infrastructure.models import SystemStateRow
+from travel_agent.shared.infrastructure.db.base import Base
 
 
 @pytest.fixture
@@ -21,6 +23,12 @@ def settings(tmp_path: Path) -> Settings:
 @pytest.fixture
 async def client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
     app = create_app(settings)
+    container = app.state.container
+    async with container.database.engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    async with container.database.session_factory() as session:
+        session.add(SystemStateRow(id=1))
+        await session.commit()
     transport = httpx.ASGITransport(app=app)
     async with (
         app.router.lifespan_context(app),

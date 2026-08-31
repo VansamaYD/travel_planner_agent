@@ -4,7 +4,7 @@
 
 ## 当前实现
 
-Slice 0 已提供：
+Slice 0～1 已提供：
 
 - FastAPI 应用工厂、显式组合根和健康检查；
 - SQLite 异步连接、WAL 参数和 Unit of Work；
@@ -12,7 +12,12 @@ Slice 0 已提供：
 - React 19 + Vite 8 PWA 移动端骨架；
 - Python/TypeScript 架构边界检查；
 - Docker Compose 的 Web + 单 Worker API 拓扑；
-- GitHub Actions 的后端、前端和文档验证。
+- GitHub Actions 的后端、前端和文档验证；
+- 首次管理员初始化和只显示一次的离线恢复码；
+- Argon2id 密码哈希、AES-GCM 字段保护和 UUIDv7 标识；
+- HttpOnly Session、CSRF、登录限流、退出撤销和失败审计；
+- 默认家庭所有者、家庭上下文和家庭创建 API；
+- 移动端初始化、登录、恢复码确认和家庭首页。
 
 完整需求和设计见 [docs/design/README.md](./docs/design/README.md)。
 

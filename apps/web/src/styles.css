@@ -208,6 +208,198 @@ h2 {
   color: #64756c;
 }
 
+.auth-card,
+.loading-card {
+  width: min(100%, 560px);
+  margin: 0 auto 18px;
+  padding: 24px;
+  border: 1px solid rgb(18 55 42 / 12%);
+  border-radius: 24px;
+  background: rgb(248 250 246 / 92%);
+  box-shadow: 0 24px 60px rgb(31 59 45 / 10%);
+}
+
+.auth-card h2 {
+  margin-bottom: 10px;
+  font-size: 1.8rem;
+}
+
+.form-intro {
+  margin-bottom: 22px;
+  color: #53665c;
+  line-height: 1.65;
+}
+
+.auth-form {
+  display: grid;
+  gap: 17px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 7px;
+}
+
+.auth-form label > span {
+  color: #35483e;
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.auth-form input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid rgb(18 55 42 / 22%);
+  border-radius: 13px;
+  color: inherit;
+  background: #fff;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.auth-form input:focus {
+  border-color: #2c6b4c;
+  box-shadow: 0 0 0 4px rgb(44 107 76 / 13%);
+}
+
+.primary-button,
+.text-button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.primary-button {
+  padding: 0 18px;
+  color: #f4f7f2;
+  background: #12372a;
+  box-shadow: 0 12px 28px rgb(18 55 42 / 20%);
+}
+
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  box-shadow: none;
+}
+
+.text-button {
+  min-height: 40px;
+  padding: 0 12px;
+  color: #315945;
+  background: transparent;
+}
+
+.form-error {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  color: #722f25;
+  background: #f5dfd8;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.compact-auth {
+  margin-top: 14px;
+}
+
+.recovery-card {
+  border-color: rgb(179 126 32 / 35%);
+}
+
+.recovery-code {
+  display: block;
+  margin: 20px 0;
+  padding: 18px 14px;
+  overflow-wrap: anywhere;
+  border: 1px dashed rgb(18 55 42 / 35%);
+  border-radius: 14px;
+  color: #163d2f;
+  background: #edf2e9;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.confirmation-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 20px 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.confirmation-row input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.welcome-panel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.welcome-panel h2,
+.next-action h2 {
+  margin-bottom: 8px;
+}
+
+.welcome-panel p:last-child,
+.next-action p {
+  margin-bottom: 0;
+}
+
+.family-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.family-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #edf2e9;
+}
+
+.family-list strong,
+.family-list small {
+  display: block;
+}
+
+.family-list small {
+  margin-top: 4px;
+  color: #64756c;
+}
+
+.family-list li > span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #24583d;
+  background: #d3e7d3;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.next-action .primary-button {
+  width: 100%;
+  margin-top: 18px;
+}
+
 @media (min-width: 640px) {
   .app-shell {
     padding-right: 28px;
@@ -216,6 +408,10 @@ h2 {
 
   .panel {
     padding: 26px;
+  }
+
+  .auth-card {
+    padding: 32px;
   }
 
   .check-grid {
@@ -246,6 +442,7 @@ h2 {
 
   .hero-copy,
   .muted,
+  .form-intro,
   .check-grid small,
   .status-summary span {
     color: #aebdb4;
@@ -259,6 +456,27 @@ h2 {
   .panel {
     border-color: rgb(225 242 231 / 10%);
     background: rgb(24 40 32 / 88%);
+  }
+
+  .auth-card,
+  .loading-card {
+    border-color: rgb(225 242 231 / 10%);
+    background: rgb(24 40 32 / 94%);
+  }
+
+  .auth-form label > span {
+    color: #cfddd4;
+  }
+
+  .auth-form input {
+    border-color: rgb(225 242 231 / 18%);
+    background: #14251d;
+  }
+
+  .recovery-code,
+  .family-list li {
+    color: #e6efe8;
+    background: #1c3026;
   }
 
   .section-number {

@@ -8,6 +8,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from travel_agent.bootstrap.settings import get_settings
+from travel_agent.shared.infrastructure.db import model_registry  # noqa: F401
 from travel_agent.shared.infrastructure.db.base import Base
 
 config = context.config

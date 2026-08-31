@@ -44,6 +44,16 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("APP_MASTER_KEY", "TRAVEL_APP_MASTER_KEY"),
     )
+    session_lifetime_days: int = Field(
+        default=7,
+        ge=1,
+        le=30,
+        validation_alias=AliasChoices("SESSION_LIFETIME_DAYS", "TRAVEL_SESSION_LIFETIME_DAYS"),
+    )
+    session_cookie_name: str = Field(
+        default="travel_session",
+        validation_alias=AliasChoices("SESSION_COOKIE_NAME", "TRAVEL_SESSION_COOKIE_NAME"),
+    )
 
     @field_validator("log_level")
     @classmethod
