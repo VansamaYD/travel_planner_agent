@@ -18,6 +18,9 @@ from travel_agent.modules.access.infrastructure.security import (
     resolve_protection_key,
 )
 from travel_agent.modules.access.infrastructure.store import SqlAlchemyAccessStore
+from travel_agent.modules.conversations.infrastructure import SqlAlchemyConversationStore
+from travel_agent.modules.conversations.provider import DeepSeekChatProvider, DisabledChatProvider
+from travel_agent.modules.conversations.service import ConversationService
 from travel_agent.modules.itinerary.application.ports import ItineraryStore
 from travel_agent.modules.itinerary.application.service import ItineraryService
 from travel_agent.modules.itinerary.infrastructure.store import SqlAlchemyItineraryStore
@@ -51,6 +54,7 @@ class Container:
     trip_service: TripService
     itinerary_service: ItineraryService
     planning_service: PlanningService
+    conversation_service: ConversationService
     login_rate_limiter: LoginRateLimiter
     invite_registration_rate_limiter: LoginRateLimiter
 
@@ -106,6 +110,17 @@ def build_container(settings: Settings | None = None) -> Container:
         if deepseek_key is not None and resolved_settings.deepseek_model
         else DisabledModelProvider()
     )
+    chat_provider = (
+        DeepSeekChatProvider(
+            deepseek_key.get_secret_value(),
+            resolved_settings.deepseek_base_url,
+            resolved_settings.deepseek_model,
+            resolved_settings.model_test_timeout_seconds,
+            resolved_settings.model_planning_max_output_tokens,
+        )
+        if deepseek_key is not None and resolved_settings.deepseek_model
+        else DisabledChatProvider()
+    )
     health_service = HealthService(
         checks=(
             DatabaseReadinessCheck(database),
@@ -139,6 +154,11 @@ def build_container(settings: Settings | None = None) -> Container:
             clock=SystemClock(),
             provider_name="deepseek",
             model_name=resolved_settings.deepseek_model,
+        ),
+        conversation_service=ConversationService(
+            store_factory=lambda: SqlAlchemyConversationStore(database.session_factory, protector),
+            provider=chat_provider,
+            clock=SystemClock(),
         ),
         login_rate_limiter=LoginRateLimiter(),
         invite_registration_rate_limiter=LoginRateLimiter(attempts=3, window_seconds=600),

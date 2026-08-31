@@ -17,6 +17,11 @@ from travel_agent.modules.access.application.errors import (
     ResourceNotFoundError,
     VersionConflictError,
 )
+from travel_agent.modules.conversations.service import (
+    ConversationError,
+    ConversationNotFoundError,
+    ConversationPermissionError,
+)
 from travel_agent.modules.itinerary.application.errors import (
     ItineraryError,
     ItineraryInvalidInputError,
@@ -156,6 +161,32 @@ async def planning_error_handler(request: Request, error: PlanningError) -> JSON
             "instance": request.url.path,
             "request_id": getattr(request.state, "request_id", None),
             "retryable": isinstance(error, (PlanningProviderError, PlanningVersionConflictError)),
+        },
+    )
+
+
+async def conversation_error_handler(request: Request, error: ConversationError) -> JSONResponse:
+    status_by_error: dict[type[ConversationError], int] = {
+        ConversationPermissionError: 403,
+        ConversationNotFoundError: 404,
+    }
+    status_code = status_by_error.get(type(error), 422)
+    details = {
+        "conversation_permission_denied": "没有访问这个对话的权限。",
+        "conversation_not_found": "对话不存在。",
+    }
+    return JSONResponse(
+        status_code=status_code,
+        media_type="application/problem+json",
+        content={
+            "type": f"https://travel-agent.local/problems/{error.code.replace('_', '-')}",
+            "title": "对话请求无法完成",
+            "status": status_code,
+            "code": error.code,
+            "detail": str(error) or details.get(error.code, "对话请求无法完成。"),
+            "instance": request.url.path,
+            "request_id": getattr(request.state, "request_id", None),
+            "retryable": False,
         },
     )
 

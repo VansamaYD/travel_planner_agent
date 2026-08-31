@@ -6,6 +6,7 @@ import { FamilyMembers } from './FamilyMembers'
 import { FamilyInvites } from './FamilyInvites'
 import { JoinFamilyPrompt } from './JoinFamilyPrompt'
 import { TripsWorkspace } from '../trips/TripsWorkspace'
+import { ChatWorkspace } from '../chat/ChatWorkspace'
 
 interface DashboardProps {
   session: SessionData
@@ -43,7 +44,7 @@ export function Dashboard({ session, onLoggedOut, onSessionChanged }: DashboardP
       <header className="workspace-header"><div><strong>旅行助手</strong><span>{activeFamily?.name ?? '个人空间'}</span></div><button aria-label="打开设置" onClick={() => setPage('settings')} type="button">{session.user.display_name.slice(0, 1)}</button></header>
 
       <div className="workspace-content">
-      {page === 'chat' && <section className="chat-home"><div className="chat-welcome"><span className="chat-mark">旅</span><h1>今天想计划什么？</h1><p>可以规划新旅行、优化路线、查询天气、分析预算，或处理现有行程。</p></div><div className="prompt-grid"><button onClick={() => setPage('trips')} type="button"><strong>规划一次新旅行</strong><span>从日期、人数和偏好开始</span></button><button onClick={() => setPage('trips')} type="button"><strong>优化已有日程</strong><span>减少折返、步行或预算</span></button><button disabled type="button"><strong>查询地图与天气</strong><span>在线工具正在接入</span></button><button disabled type="button"><strong>导入订单或攻略</strong><span>支持文字、链接和截图</span></button></div><div className="chat-composer is-upcoming"><button aria-label="添加附件" disabled type="button">+</button><span>实时对话运行时将在下一个切片启用</span><button disabled type="button">↑</button></div></section>}
+      {page === 'chat' && <ChatWorkspace session={session} />}
 
       {page === 'today' && <section className="page-empty panel"><p className="section-kicker">TODAY</p><h2>今日行程</h2><p>旅行开始后，这里只显示当前事项、下一站、导航、票据和风险提醒。</p><button className="primary-button" onClick={() => setPage('trips')} type="button">查看旅行</button></section>}
 
