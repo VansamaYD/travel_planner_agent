@@ -129,6 +129,19 @@ export async function logout(csrfToken: string): Promise<void> {
   if (!response.ok) await throwProblem(response)
 }
 
+export async function renameFamily(
+  familyId: string,
+  name: string,
+  csrfToken: string,
+): Promise<SessionData> {
+  const response = await fetch(`/api/v1/families/${familyId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+    body: JSON.stringify({ name }),
+  })
+  return (await parse<Envelope<SessionData>>(response)).data
+}
+
 export async function listFamilyMembers(familyId: string, signal?: AbortSignal): Promise<FamilyMember[]> {
   const response = await fetch(`/api/v1/families/${familyId}/members`, { signal })
   return (await parse<Envelope<FamilyMember[]>>(response)).data

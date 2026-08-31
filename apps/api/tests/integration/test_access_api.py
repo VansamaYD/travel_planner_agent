@@ -86,6 +86,15 @@ async def test_login_session_csrf_family_creation_and_logout(client: httpx.Async
         "第二个家庭",
     ]
 
+    family_id = families.json()["data"][0]["id"]
+    renamed = await client.patch(
+        f"/api/v1/families/{family_id}",
+        headers={"X-CSRF-Token": csrf},
+        json={"name": "青岛旅行家庭"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["data"]["families"][0]["name"] == "青岛旅行家庭"
+
     logged_out = await client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": csrf})
     assert logged_out.status_code == 204
     assert (await client.get("/api/v1/auth/session")).status_code == 401
@@ -95,7 +104,10 @@ async def test_login_session_csrf_family_creation_and_logout(client: httpx.Async
         json={"login": "admin@example.com", "password": "correct horse battery staple"},
     )
     assert logged_in.status_code == 200
-    assert logged_in.json()["data"]["families"][1]["name"] == "第二个家庭"
+    assert [value["name"] for value in logged_in.json()["data"]["families"]] == [
+        "青岛旅行家庭",
+        "第二个家庭",
+    ]
 
 
 @pytest.mark.asyncio

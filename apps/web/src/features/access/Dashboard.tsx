@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { logout, type SessionData } from '../../shared/api/access'
+import { logout, renameFamily, type SessionData } from '../../shared/api/access'
 import { SystemStatus } from '../system-status'
 import { FamilyMembers } from './FamilyMembers'
 import { FamilyInvites } from './FamilyInvites'
@@ -8,6 +8,7 @@ import { JoinFamilyPrompt } from './JoinFamilyPrompt'
 import { TripsWorkspace } from '../trips/TripsWorkspace'
 import { ChatWorkspace } from '../chat/ChatWorkspace'
 import { GuideLibrary } from '../guides/GuideLibrary'
+import { IntegrationSettings } from '../settings/IntegrationSettings'
 
 interface DashboardProps {
   session: SessionData
@@ -25,6 +26,10 @@ export function Dashboard({ session, onLoggedOut, onSessionChanged }: DashboardP
   const selectedFamilyId = activeFamily?.id ?? ''
   const inviteCode = window.location.hash.match(/^#invite=([A-Z2-7-]{20,64})$/i)?.[1] ?? ''
   const [joinCode, setJoinCode] = useState<string | null>(inviteCode || null)
+  const [chatDraft, setChatDraft] = useState<{ id: number; text: string } | null>(null)
+  const [renamingFamilyId, setRenamingFamilyId] = useState<string | null>(null)
+  const [familyName, setFamilyName] = useState('')
+  const [familySaving, setFamilySaving] = useState(false)
 
   async function signOut() {
     setLoggingOut(true)
@@ -36,6 +41,16 @@ export function Dashboard({ session, onLoggedOut, onSessionChanged }: DashboardP
     }
   }
 
+  async function saveFamilyName(familyId: string) {
+    const name = familyName.trim()
+    if (!name || familySaving) return
+    setFamilySaving(true)
+    try {
+      onSessionChanged(await renameFamily(familyId, name, session.csrf_token))
+      setRenamingFamilyId(null)
+    } finally { setFamilySaving(false) }
+  }
+
   return (
     <main className="workspace-shell">
       {joinCode !== null && <JoinFamilyPrompt initialCode={joinCode} session={session} onAccepted={(updated) => {
@@ -45,9 +60,15 @@ export function Dashboard({ session, onLoggedOut, onSessionChanged }: DashboardP
       <header className="workspace-header"><div><strong>旅行助手</strong><span>{activeFamily?.name ?? '个人空间'}</span></div><button aria-label="打开设置" onClick={() => setPage('settings')} type="button">{session.user.display_name.slice(0, 1)}</button></header>
 
       <div className="workspace-content">
-      {page === 'chat' && <ChatWorkspace onOpenLibrary={() => setPage('guides')} session={session} />}
+      {page === 'chat' && <ChatWorkspace initialDraft={chatDraft} onOpenLibrary={() => setPage('guides')} session={session} />}
 
-      {page === 'guides' && <GuideLibrary session={session} />}
+      {page === 'guides' && <GuideLibrary onGenerateCards={(guide) => {
+        setChatDraft({
+          id: Date.now(),
+          text: `请从私人攻略库中读取《${guide.title}》（城市：${guide.city || '待识别'}），提取其中值得复用的景点、餐厅、酒店和交通枢纽并建立地点知识卡。请合并已有同名卡片，最多先处理 8 个高价值地点，完成后列出成功更新的卡片。`,
+        })
+        setPage('chat')
+      }} session={session} />}
 
       {page === 'today' && <section className="page-empty panel"><p className="section-kicker">TODAY</p><h2>今日行程</h2><p>旅行开始后，这里只显示当前事项、下一站、导航、票据和风险提醒。</p><button className="primary-button" onClick={() => setPage('trips')} type="button">查看旅行</button></section>}
 
@@ -67,11 +88,12 @@ export function Dashboard({ session, onLoggedOut, onSessionChanged }: DashboardP
         <ul className="family-list">
           {session.families.map((family) => (
             <li className={family.id === selectedFamilyId ? 'is-active' : ''} key={family.id}>
-              <div>
-                <strong>{family.name}</strong>
-                <small>{roleLabels[family.role]}</small>
-              </div>
-              <button className="family-switch" onClick={() => setActiveFamilyId(family.id)} type="button">{family.id === selectedFamilyId ? '当前' : '切换'}</button>
+              <div>{renamingFamilyId === family.id
+                ? <label className="family-name-editor"><span>家庭名称</span><input autoFocus maxLength={80} onChange={(event) => setFamilyName(event.target.value)} value={familyName} /></label>
+                : <><strong>{family.name}</strong><small>{roleLabels[family.role]}</small></>}</div>
+              <div className="family-row-actions">{renamingFamilyId === family.id
+                ? <><button disabled={familySaving || !familyName.trim()} onClick={() => void saveFamilyName(family.id)} type="button">保存</button><button onClick={() => setRenamingFamilyId(null)} type="button">取消</button></>
+                : <>{(family.role === 'owner' || family.role === 'admin') && <button onClick={() => { setRenamingFamilyId(family.id); setFamilyName(family.name) }} type="button">改名</button>}<button className="family-switch" onClick={() => setActiveFamilyId(family.id)} type="button">{family.id === selectedFamilyId ? '当前' : '切换'}</button></>}</div>
             </li>
           ))}
         </ul>
@@ -79,6 +101,7 @@ export function Dashboard({ session, onLoggedOut, onSessionChanged }: DashboardP
 
       {activeFamily && <FamilyMembers family={activeFamily} session={session} />}
       {activeFamily && (activeFamily.role === 'owner' || activeFamily.role === 'admin') && <FamilyInvites family={activeFamily} session={session} />}
+      {session.user.system_role === 'admin' && <IntegrationSettings session={session} />}
       <SystemStatus />
       </div>}
       </div>

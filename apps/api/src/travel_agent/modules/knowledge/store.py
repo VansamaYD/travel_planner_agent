@@ -57,7 +57,7 @@ class SqlAlchemyKnowledgeStore:
         await self.session.commit()
 
     def identity_hash(self, owner_user_id: str, provider_id: str, name: str, city: str) -> str:
-        canonical = provider_id or f"{name.strip().casefold()}|{city.strip().casefold()}"
+        canonical = provider_id or f"{name.strip().casefold()}|{_normalized_city(city)}"
         return self._protector.digest(canonical, context=f"place.identity.{owner_user_id}")
 
     async def upsert_place(
@@ -97,8 +97,8 @@ class SqlAlchemyKnowledgeStore:
                     for candidate in candidates
                     if self._decrypt(candidate.name_ciphertext, "place.name").casefold()
                     == name.strip().casefold()
-                    and self._decrypt(candidate.city_ciphertext, "place.city").casefold()
-                    == city.strip().casefold()
+                    and _normalized_city(self._decrypt(candidate.city_ciphertext, "place.city"))
+                    == _normalized_city(city)
                 ),
                 None,
             )
@@ -216,7 +216,7 @@ class SqlAlchemyKnowledgeStore:
     async def find_place(self, owner_user_id: str, name: str, city: str) -> PlaceCard | None:
         for value in await self.list_places(owner_user_id):
             if value.name.strip().casefold() == name.strip().casefold() and (
-                not city or value.city.strip().casefold() == city.strip().casefold()
+                not city or _normalized_city(value.city) == _normalized_city(city)
             ):
                 return value
         return None
@@ -385,6 +385,11 @@ class SqlAlchemyKnowledgeStore:
 
 def _aware(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+def _normalized_city(value: str) -> str:
+    normalized = value.strip().casefold()
+    return normalized[:-1] if normalized.endswith("市") and len(normalized) > 2 else normalized
 
 
 def _semantic_details(value: dict[str, object]) -> dict[str, object]:

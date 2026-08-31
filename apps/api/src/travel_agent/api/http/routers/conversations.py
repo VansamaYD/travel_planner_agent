@@ -4,7 +4,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Annotated, cast
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Header, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -91,6 +91,17 @@ async def list_messages(conversation_id: str, request: Request) -> dict[str, obj
         await _session(request), conversation_id
     )
     return {"data": [_message(value) for value in values]}
+
+
+@router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_conversation(
+    conversation_id: str,
+    request: Request,
+    x_csrf_token: Annotated[str | None, Header()] = None,
+) -> None:
+    await _container(request).conversation_service.delete(
+        await _session(request), x_csrf_token, conversation_id
+    )
 
 
 @router.post("/conversations/{conversation_id}/messages/stream")

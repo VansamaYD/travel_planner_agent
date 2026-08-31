@@ -166,7 +166,10 @@ class SqlAlchemyToolStore:
                 "token": str(guide.get("xsec_token") or "")[:2000],
                 "source_query": str(guide.get("source_query") or "")[:300],
             }
-            city = str(guide.get("city") or _city_hint(values["source_query"]))[:100]
+            inferred_city = _city_hint(
+                " ".join((values["source_query"], values["title"], values["summary"]))
+            )
+            city = str(guide.get("city") or inferred_city)[:100]
             if row is None:
                 row_id = new_uuid7()
                 self.session.add(
@@ -188,6 +191,7 @@ class SqlAlchemyToolStore:
                         content_ciphertext=None,
                         images_ciphertext=None,
                         comments_ciphertext=None,
+                        tags_ciphertext=None,
                         metadata_ciphertext=None,
                         user_notes_ciphertext=None,
                         status="discovered",
@@ -208,7 +212,8 @@ class SqlAlchemyToolStore:
                 row.source_query_ciphertext = self._optional(
                     values["source_query"], "guide.source_query"
                 )
-                if city:
+                current_city = self._decrypt(row.city_ciphertext, "guide.city")
+                if city and current_city in ("", "未分类"):
                     row.city_ciphertext = self._encrypt(city, "guide.city")
                 row.title_ciphertext = self._encrypt(values["title"], "guide.title")
                 row.url_ciphertext = self._optional(values["url"], "guide.url")
@@ -276,7 +281,8 @@ class SqlAlchemyToolStore:
             return None
         title = str(detail.get("title") or "").strip()
         author = str(detail.get("author") or "").strip()
-        content = str(detail.get("content") or "")[:24000]
+        content, tags = _extract_topics(str(detail.get("content") or ""))
+        content = content[:24000]
         if title:
             row.title_ciphertext = self._encrypt(title[:300], "guide.title")
         if author:
@@ -286,9 +292,29 @@ class SqlAlchemyToolStore:
             (content or self._decrypt(row.summary_ciphertext, "guide.summary"))[:2000],
             "guide.summary",
         )
-        row.images_ciphertext = self._json_optional(detail.get("images"), "guide.images")
-        row.comments_ciphertext = self._json_optional(detail.get("comments"), "guide.comments")
+        images = detail.get("images")
+        comments = detail.get("comments")
+        if images:
+            row.images_ciphertext = self._json_optional(images, "guide.images")
+        if comments:
+            row.comments_ciphertext = self._json_optional(comments, "guide.comments")
+        if tags:
+            row.tags_ciphertext = self._json_optional(tags, "guide.tags")
         row.metadata_ciphertext = self._json_optional(detail.get("metadata"), "guide.metadata")
+        current_city = self._decrypt(row.city_ciphertext, "guide.city")
+        if current_city in ("", "未分类"):
+            inferred_city = _city_hint(
+                " ".join(
+                    (
+                        self._decrypt(row.source_query_ciphertext, "guide.source_query"),
+                        title,
+                        content,
+                        " ".join(tags),
+                    )
+                )
+            )
+            if inferred_city != "未分类":
+                row.city_ciphertext = self._encrypt(inferred_city, "guide.city")
         row.status = "ready"
         row.detail_fetched_at = fetched_at
         row.detail_expires_at = expires_at
@@ -321,7 +347,9 @@ class SqlAlchemyToolStore:
         if city is not None:
             row.city_ciphertext = self._optional(city[:100], "guide.city")
         if content is not None:
-            row.content_ciphertext = self._optional(content[:24000], "guide.content")
+            clean_content, tags = _extract_topics(content)
+            row.content_ciphertext = self._optional(clean_content[:24000], "guide.content")
+            row.tags_ciphertext = self._json_optional(tags, "guide.tags")
         if user_notes is not None:
             row.user_notes_ciphertext = self._optional(user_notes[:8000], "guide.user_notes")
         if pinned is not None:
@@ -445,6 +473,7 @@ class SqlAlchemyToolStore:
     def _guide(self, row: GuideCandidateRow) -> GuideCandidate:
         images = self._json(row.images_ciphertext, "guide.images", [])
         comments = self._json(row.comments_ciphertext, "guide.comments", [])
+        tags = self._json(row.tags_ciphertext, "guide.tags", [])
         metadata = self._json(row.metadata_ciphertext, "guide.metadata", {})
         return GuideCandidate(
             id=row.id,
@@ -462,6 +491,7 @@ class SqlAlchemyToolStore:
             comments=tuple(item for item in comments if isinstance(item, dict))
             if isinstance(comments, list)
             else (),
+            tags=tuple(str(item) for item in tags) if isinstance(tags, list) else (),
             metadata=metadata if isinstance(metadata, dict) else {},
             user_notes=self._decrypt(row.user_notes_ciphertext, "guide.user_notes"),
             fetched_at=_aware(row.fetched_at),
@@ -476,5 +506,106 @@ def _aware(value: datetime) -> datetime:
 
 
 def _city_hint(query: str) -> str:
-    match = re.search(r"([\u4e00-\u9fff]{2,12}?)(?:市)?(?:旅游|旅行|攻略|景点|美食|酒店)", query)
+    normalized = re.sub(r"\s+", "", query)
+    destinations = (
+        "北京",
+        "上海",
+        "天津",
+        "重庆",
+        "广州",
+        "深圳",
+        "杭州",
+        "苏州",
+        "南京",
+        "青岛",
+        "成都",
+        "西安",
+        "武汉",
+        "长沙",
+        "厦门",
+        "福州",
+        "泉州",
+        "大连",
+        "沈阳",
+        "哈尔滨",
+        "长春",
+        "济南",
+        "烟台",
+        "威海",
+        "郑州",
+        "洛阳",
+        "开封",
+        "合肥",
+        "南昌",
+        "贵阳",
+        "昆明",
+        "大理",
+        "丽江",
+        "拉萨",
+        "三亚",
+        "海口",
+        "桂林",
+        "南宁",
+        "珠海",
+        "佛山",
+        "东莞",
+        "汕头",
+        "惠州",
+        "宁波",
+        "温州",
+        "绍兴",
+        "嘉兴",
+        "无锡",
+        "扬州",
+        "镇江",
+        "泰安",
+        "淄博",
+        "潍坊",
+        "日照",
+        "秦皇岛",
+        "石家庄",
+        "太原",
+        "呼和浩特",
+        "银川",
+        "兰州",
+        "西宁",
+        "乌鲁木齐",
+        "喀什",
+        "张家界",
+        "宜昌",
+        "九江",
+        "景德镇",
+        "黄山",
+        "舟山",
+        "北海",
+        "西双版纳",
+        "香格里拉",
+        "阿坝",
+        "甘孜",
+        "延边",
+        "漠河",
+        "香港",
+        "澳门",
+        "台北",
+        "高雄",
+    )
+    for destination in destinations:
+        if destination in normalized:
+            return destination
+    match = re.search(r"([\u4e00-\u9fff]{2,8})市(?:旅游|旅行|攻略|景点|美食|酒店)?", normalized)
     return match.group(1) if match else "未分类"
+
+
+_TOPIC_PATTERN = re.compile(r"#\s*([^#\[\]\n]{1,40}?)\s*\[话题\]\s*#?")
+
+
+def _extract_topics(content: str) -> tuple[str, list[str]]:
+    tags: list[str] = []
+    for value in _TOPIC_PATTERN.findall(content):
+        tag = " ".join(value.split()).strip("# ")
+        if tag and tag not in tags:
+            tags.append(tag)
+    cleaned = _TOPIC_PATTERN.sub("", content)
+    cleaned = re.sub(r"(?:\s*#\s*)+$", "", cleaned).strip()
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned, tags[:50]

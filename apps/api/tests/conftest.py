@@ -17,6 +17,7 @@ def settings(tmp_path: Path) -> Settings:
         _env_file=None,
         app_env="test",
         data_root=tmp_path / "data",
+        config_root=tmp_path / "config",
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
     )
 

@@ -244,12 +244,13 @@ class XiaohongshuMcpProvider:
         if operation == "guide_detail_xhs":
             feed_id = _required_text(args, "feed_id", 160)
             token = _required_text(args, "xsec_token", 2000)
+            load_all_comments = args.get("load_all_comments") is True
             raw = await self._call(
                 "get_feed_detail",
                 {
                     "feed_id": feed_id,
                     "xsec_token": token,
-                    "load_all_comments": False,
+                    "load_all_comments": load_all_comments,
                 },
             )
             return self._normalize_detail(raw, feed_id)
@@ -362,11 +363,20 @@ class XiaohongshuMcpProvider:
         )
         images = _image_urls(note)
         comments_value = data.get("comments") or data.get("commentList") or root.get("comments")
+        if isinstance(comments_value, dict):
+            comments_value = next(
+                (
+                    comments_value.get(key)
+                    for key in ("list", "items", "comments", "commentList")
+                    if isinstance(comments_value.get(key), list)
+                ),
+                [],
+            )
         comments = []
         for item in _list(comments_value)[:10]:
             if not isinstance(item, dict):
                 continue
-            comment_user_value = item.get("user")
+            comment_user_value = item.get("user") or item.get("userInfo")
             comment_user: dict[str, object] = (
                 cast(dict[str, object], comment_user_value)
                 if isinstance(comment_user_value, dict)

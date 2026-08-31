@@ -88,6 +88,11 @@ class FamilyCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
 
 
+class FamilyUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=80)
+
+
 class ResourceIdData(BaseModel):
     id: str
 
@@ -245,4 +250,23 @@ async def create_family(
     )
     return ResourceIdResponse(
         data=ResourceIdData(id=family_id), meta=MetaResponse(request_id=_request_id(request))
+    )
+
+
+@router.patch("/families/{family_id}", response_model=SessionResponse)
+async def rename_family(
+    family_id: str,
+    payload: FamilyUpdateRequest,
+    request: Request,
+    x_csrf_token: Annotated[str | None, Header()] = None,
+) -> SessionResponse:
+    session = await _container(request).access_service.rename_family(
+        await _current_session(request),
+        x_csrf_token,
+        family_id,
+        payload.name,
+        _request_id(request),
+    )
+    return SessionResponse(
+        data=_session_data(session), meta=MetaResponse(request_id=_request_id(request))
     )

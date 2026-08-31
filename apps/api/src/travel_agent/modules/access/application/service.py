@@ -254,6 +254,61 @@ class AccessService:
             await store.commit()
         return family_id
 
+    async def rename_family(
+        self,
+        session: AuthenticatedSession,
+        csrf_token: str | None,
+        family_id: str,
+        name: str,
+        request_id: str | None,
+    ) -> AuthenticatedSession:
+        self.require_csrf(session, csrf_token)
+        family = next((value for value in session.families if value.id == family_id), None)
+        if family is None or family.role not in (FamilyRole.OWNER, FamilyRole.ADMIN):
+            raise PermissionDeniedError
+        clean_name = _required_text(name, "name", 1, 80)
+        now = self._clock.now()
+        async with self._store_factory() as store:
+            if not await store.update_family_name(family_id, clean_name):
+                raise InvalidInputError("family does not exist")
+            await store.add_audit(
+                event_type="family.renamed",
+                actor_user_id=session.user.id,
+                subject_type="family",
+                subject_id=family_id,
+                request_id=request_id,
+                details={},
+                created_at=now,
+            )
+            await store.commit()
+        return AuthenticatedSession(
+            session.id,
+            session.user,
+            session.csrf_token,
+            session.expires_at,
+            await self._families_for(session.user.id),
+        )
+
+    async def record_integration_settings_change(
+        self,
+        session: AuthenticatedSession,
+        changed_keys: tuple[str, ...],
+        request_id: str | None,
+    ) -> None:
+        if session.user.system_role is not SystemRole.ADMIN:
+            raise PermissionDeniedError
+        async with self._store_factory() as store:
+            await store.add_audit(
+                event_type="settings.integrations_updated",
+                actor_user_id=session.user.id,
+                subject_type="system_settings",
+                subject_id="integrations",
+                request_id=request_id,
+                details={"changed_keys": list(changed_keys)},
+                created_at=self._clock.now(),
+            )
+            await store.commit()
+
     @staticmethod
     def require_csrf(session: AuthenticatedSession, supplied: str | None) -> None:
         if not supplied or not hmac.compare_digest(session.csrf_token, supplied):

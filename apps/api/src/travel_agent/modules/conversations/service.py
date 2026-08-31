@@ -81,6 +81,7 @@ class ConversationStore(Protocol):
     ) -> None: ...
     async def fail(self, run_id: str, completed_at: datetime) -> None: ...
     async def rename(self, conversation_id: str, title: str, updated_at: datetime) -> None: ...
+    async def delete(self, conversation_id: str) -> bool: ...
     async def commit(self) -> None: ...
     async def __aenter__(self) -> ConversationStore: ...
     async def __aexit__(
@@ -124,6 +125,16 @@ class ConversationService:
             await self._owned(store, session.user.id, conversation_id)
             return await store.messages(conversation_id)
 
+    async def delete(
+        self, session: AuthenticatedSession, csrf: str | None, conversation_id: str
+    ) -> None:
+        self._csrf(session, csrf)
+        async with self._store_factory() as store:
+            await self._owned(store, session.user.id, conversation_id)
+            if not await store.delete(conversation_id):
+                raise ConversationNotFoundError
+            await store.commit()
+
     async def stream_message(
         self, session: AuthenticatedSession, csrf: str | None, conversation_id: str, content: str
     ) -> AsyncIterator[dict[str, object]]:
@@ -154,6 +165,7 @@ class ConversationService:
         sequence, chunks = 3, []
         artifacts: list[dict[str, object]] = []
         guide_candidates: dict[str, _GuideCandidateAccumulator] = {}
+        place_cards: dict[str, dict[str, object]] = {}
         tool_results: dict[str, ToolResult] = {}
         try:
             await self._event(
@@ -170,6 +182,7 @@ class ConversationService:
             model_messages.append({"role": "user", "content": content})
             descriptors = self._tools.model_descriptors()
             completed = False
+            total_tool_calls = 0
             for _ in range(4):
                 calls: list[ModelStreamEvent] = []
                 round_text: list[str] = []
@@ -203,6 +216,7 @@ class ConversationService:
                     }
                 )
                 for call in calls:
+                    total_tool_calls += 1
                     label = self._tools.label(call.tool_name)
                     await self._event(
                         run.id,
@@ -217,6 +231,10 @@ class ConversationService:
                         "label": f"正在{label}",
                     }
                     try:
+                        if total_tool_calls > 16:
+                            raise ConversationError(
+                                "本轮工具调用已达到安全上限, 请基于已有结果总结。"
+                            )
                         arguments = json.loads(call.tool_arguments or "{}")
                         if not isinstance(arguments, dict):
                             raise ConversationError("工具参数不是对象。")
@@ -260,6 +278,24 @@ class ConversationService:
                         and not reused
                     ):
                         _collect_guide_candidates(guide_candidates, result_payload)
+                    if event_type == "tool.completed" and call.tool_name in {
+                        "place_knowledge_upsert",
+                        "place_knowledge_batch_upsert",
+                    }:
+                        tool_data = result_payload.get("data")
+                        card_values = (
+                            tool_data.get("cards", [])
+                            if isinstance(tool_data, dict)
+                            and isinstance(tool_data.get("cards"), list)
+                            else [tool_data]
+                        )
+                        for card_value in card_values:
+                            if isinstance(card_value, dict) and card_value.get("card_id"):
+                                place_cards[str(card_value["card_id"])] = {
+                                    key: card_value[key]
+                                    for key in ("card_id", "name", "city", "version", "status")
+                                    if key in card_value
+                                }
                     model_messages.append(
                         {
                             "role": "tool",
@@ -284,7 +320,31 @@ class ConversationService:
                     "label": "正在结合工具结果",
                 }
             if not completed:
-                raise ConversationError("工具调用轮次超过上限。")
+                await self._event(
+                    run.id,
+                    sequence,
+                    "node.started",
+                    {"node": "finalize", "label": "工具调用已结束, 正在整理已完成结果"},
+                )
+                sequence += 1
+                yield {
+                    "event": "node.started",
+                    "node": "finalize",
+                    "label": "工具调用已结束, 正在整理已完成结果",
+                }
+                model_messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "工具调用预算已经结束。请不要再调用工具; 根据已经成功的结果, "
+                            "说明完成了哪些内容、哪些未完成以及下一步建议。"
+                        ),
+                    }
+                )
+                async for model_event in self._provider.stream_turn(tuple(model_messages), ()):
+                    if model_event.kind == "text":
+                        chunks.append(model_event.text)
+                        yield {"event": "assistant.delta", "text": model_event.text}
             answer = "".join(chunks).strip()
             if not answer:
                 raise ConversationError("模型未返回可展示的回答。")
@@ -294,6 +354,15 @@ class ConversationService:
                 await self._event(run.id, sequence, "artifact.guides", guide_artifact)
                 sequence += 1
                 yield {"event": "artifact.guides", "artifact": guide_artifact}
+            if place_cards:
+                place_artifact: dict[str, object] = {
+                    "type": "place_cards",
+                    "cards": list(place_cards.values()),
+                }
+                artifacts.append(place_artifact)
+                await self._event(run.id, sequence, "artifact.places", place_artifact)
+                sequence += 1
+                yield {"event": "artifact.places", "artifact": place_artifact}
             assistant = ChatMessage(
                 new_uuid7(), conversation_id, "assistant", answer, self._clock.now()
             )
@@ -358,11 +427,14 @@ class _GuideCandidateAccumulator:
     def merge(self, guide: dict[str, object], score: int) -> None:
         self.hits += 1
         self.score += score
-        for field in ("title", "author", "summary", "url", "status"):
+        for field in ("title", "author", "summary", "url"):
             incoming = str(guide.get(field) or "").strip()
             current = getattr(self, field)
             if incoming and (not current or len(incoming) > len(current)):
                 setattr(self, field, incoming)
+        incoming_status = str(guide.get("status") or "").strip()
+        if _guide_status_rank(incoming_status) > _guide_status_rank(self.status):
+            self.status = incoming_status
 
     def payload(self) -> dict[str, object]:
         return {
@@ -445,7 +517,12 @@ def _build_guide_artifact(
         return None
     ranked = sorted(
         candidates.values(),
-        key=lambda item: (-item.hits, -item.score, item.first_seen),
+        key=lambda item: (
+            item.status == "ready",
+            -item.hits,
+            -item.score,
+            item.first_seen,
+        ),
     )
     limit = _requested_guide_limit(user_content)
     return {
@@ -473,3 +550,7 @@ def _requested_guide_limit(content: str) -> int:
     }
     raw = match.group("count")
     return min(int(raw) if raw.isdigit() else chinese_counts[raw], 10)
+
+
+def _guide_status_rank(status: str) -> int:
+    return {"discovered": 0, "failed": 1, "downloading": 2, "ready": 3}.get(status, 0)

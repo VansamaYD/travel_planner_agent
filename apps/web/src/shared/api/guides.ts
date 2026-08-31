@@ -14,6 +14,7 @@ export interface Guide {
   content: string
   images: string[]
   comments: GuideComment[]
+  tags: string[]
   metadata: Record<string, unknown>
   user_notes: string
   fetched_at: string
@@ -89,6 +90,13 @@ export async function deleteGuide(id: string, csrfToken: string): Promise<void> 
     method: 'DELETE', headers: { 'X-CSRF-Token': csrfToken },
   })
   if (!response.ok) await throwProblem(response)
+}
+
+export async function refreshGuideComments(id: string, csrfToken: string): Promise<Guide> {
+  const response = await fetch(`/api/v1/guides/${id}/comments/refresh`, {
+    method: 'POST', headers: { 'X-CSRF-Token': csrfToken },
+  })
+  return (await parse<Envelope<Guide>>(response)).data
 }
 
 async function parse<T>(response: Response): Promise<T> {

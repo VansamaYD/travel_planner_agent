@@ -105,6 +105,8 @@ class AccessStore(Protocol):
 
     async def list_families(self, user_id: str) -> tuple[FamilySummary, ...]: ...
 
+    async def update_family_name(self, family_id: str, name: str) -> bool: ...
+
     async def add_audit(
         self,
         *,

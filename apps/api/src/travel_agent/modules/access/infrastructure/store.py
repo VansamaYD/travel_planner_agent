@@ -235,6 +235,15 @@ class SqlAlchemyAccessStore:
             for membership, family in records
         )
 
+    async def update_family_name(self, family_id: str, name: str) -> bool:
+        result = await self.session.execute(
+            update(FamilyRow)
+            .where(FamilyRow.id == family_id)
+            .values(name_ciphertext=self._protector.encrypt(name, context="family.name"))
+            .returning(FamilyRow.id)
+        )
+        return result.scalar_one_or_none() is not None
+
     async def add_audit(
         self,
         *,

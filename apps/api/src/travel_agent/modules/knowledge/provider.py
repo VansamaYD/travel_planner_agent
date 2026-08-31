@@ -27,6 +27,28 @@ class PlaceKnowledgeProvider:
                 "version": value.version,
                 "status": "knowledge_updated",
             }
+        if operation == "place_knowledge_batch_upsert":
+            claims = args.get("cards")
+            if not isinstance(claims, list) or not 1 <= len(claims) <= 8:
+                raise ToolInputError("批量地点卡必须包含 1 至 8 项。")
+            cards = []
+            for index, claim in enumerate(claims, start=1):
+                if not isinstance(claim, dict):
+                    raise ToolInputError(f"第 {index} 项地点卡参数无效。")
+                try:
+                    value = await self._service.upsert_agent_claim(owner_user_id, claim)
+                except ValueError as error:
+                    raise ToolInputError(f"第 {index} 项: {error}") from error
+                cards.append(
+                    {
+                        "card_id": value.id,
+                        "name": value.name,
+                        "city": value.city,
+                        "version": value.version,
+                        "status": "knowledge_updated",
+                    }
+                )
+            return {"cards": cards, "status": "knowledge_batch_updated"}
         if operation != "place_knowledge_search":
             raise ToolInputError("地点知识库工具不支持该操作。")
         query = str(args.get("query") or "").strip()

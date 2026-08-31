@@ -114,7 +114,7 @@ class KnowledgeService:
                         provider_id=f"amap:{item.get('id')}" if item.get("id") else "",
                         entity_type=_entity_type(type_text),
                         name=str(item.get("name") or "")[:200],
-                        city=str(item.get("city") or "")[:100],
+                        city=_city_name(str(item.get("city") or ""))[:100],
                         address=str(item.get("address") or "")[:500],
                         intro="",
                         details=details,
@@ -138,12 +138,12 @@ class KnowledgeService:
     ) -> tuple[PlaceCard, ...]:
         async with self._store_factory() as store:
             values = await store.list_places(owner_user_id)
-        query_folded, city_folded = query.strip().casefold(), city.strip().casefold()
+        query_folded, city_folded = query.strip().casefold(), _city_name(city).casefold()
         return tuple(
             value
             for value in values
             if (not query_folded or query_folded in value.name.casefold())
-            and (not city_folded or city_folded == value.city.casefold())
+            and (not city_folded or city_folded == _city_name(value.city).casefold())
             and (not entity_type or entity_type == value.entity_type)
         )
 
@@ -161,7 +161,7 @@ class KnowledgeService:
 
     async def upsert_agent_claim(self, owner_user_id: str, claim: dict[str, object]) -> PlaceCard:
         name = str(claim.get("name") or "").strip()
-        city = str(claim.get("city") or "").strip()
+        city = _city_name(str(claim.get("city") or ""))
         evidence_source = str(claim.get("evidence_source") or "").strip()
         if not name or not city or not evidence_source:
             raise ValueError("地点名称、城市和证据来源不能为空。")
@@ -225,6 +225,11 @@ class KnowledgeService:
                 await store.fail_image_analysis(record_id, str(error))
                 await store.commit()
             raise
+
+
+def _city_name(value: str) -> str:
+    normalized = value.strip()
+    return normalized[:-1] if normalized.endswith("市") and len(normalized) > 2 else normalized
 
 
 def _entity_type(value: str) -> str:

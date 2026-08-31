@@ -34,6 +34,10 @@ from travel_agent.modules.operations.infrastructure.health_checks import (
     DirectoryReadinessCheck,
     MasterKeyReadinessCheck,
 )
+from travel_agent.modules.operations.runtime_config import (
+    EncryptedRuntimeConfig,
+    apply_runtime_config,
+)
 from travel_agent.modules.planning.application.ports import PlanningStore
 from travel_agent.modules.planning.application.service import PlanningService
 from travel_agent.modules.planning.infrastructure.provider import (
@@ -72,6 +76,7 @@ class Container:
     knowledge_service: KnowledgeService
     login_rate_limiter: LoginRateLimiter
     invite_registration_rate_limiter: LoginRateLimiter
+    runtime_config: EncryptedRuntimeConfig
 
     async def startup(self) -> None:
         self.settings.ensure_runtime_directories()
@@ -82,9 +87,11 @@ class Container:
 
 
 def build_container(settings: Settings | None = None) -> Container:
-    resolved_settings = settings or get_settings()
+    base_settings = settings or get_settings()
+    protector = AesGcmTextProtector(resolve_protection_key(base_settings))
+    runtime_config = EncryptedRuntimeConfig(base_settings.config_root, protector)
+    resolved_settings = apply_runtime_config(base_settings, runtime_config)
     database = Database.from_settings(resolved_settings)
-    protector = AesGcmTextProtector(resolve_protection_key(resolved_settings))
 
     def store_factory() -> SqlAlchemyAccessStore:
         return SqlAlchemyAccessStore(database.session_factory, protector)
@@ -284,6 +291,7 @@ def build_container(settings: Settings | None = None) -> Container:
                             "properties": {
                                 "feed_id": {"type": "string"},
                                 "xsec_token": {"type": "string"},
+                                "load_all_comments": {"type": "boolean"},
                             },
                             "required": ["feed_id", "xsec_token"],
                             "additionalProperties": False,
@@ -384,6 +392,71 @@ def build_container(settings: Settings | None = None) -> Container:
             private_scope=True,
         )
     )
+    registered_tools.append(
+        RegisteredTool(
+            ToolDescriptor(
+                "place_knowledge_batch_upsert",
+                (
+                    "将本轮攻略或地图证据中的多个高价值地点一次合并到知识卡。"
+                    "整理攻略时优先使用, 每次最多 8 张, 自动合并已有同名同城卡片。"
+                ),
+                {
+                    "type": "object",
+                    "properties": {
+                        "cards": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 8,
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "city": {"type": "string"},
+                                    "entity_type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "attraction",
+                                            "restaurant",
+                                            "hotel",
+                                            "transport_hub",
+                                            "other",
+                                        ],
+                                    },
+                                    "address": {"type": "string"},
+                                    "intro": {"type": "string"},
+                                    "longitude": {"type": ["number", "null"]},
+                                    "latitude": {"type": ["number", "null"]},
+                                    "details": {"type": "object"},
+                                    "evidence_source": {"type": "string"},
+                                    "observed_at": {"type": "string"},
+                                    "confidence": {
+                                        "type": "number",
+                                        "minimum": 0.1,
+                                        "maximum": 0.75,
+                                    },
+                                },
+                                "required": [
+                                    "name",
+                                    "city",
+                                    "entity_type",
+                                    "evidence_source",
+                                ],
+                                "additionalProperties": False,
+                            },
+                        }
+                    },
+                    "required": ["cards"],
+                    "additionalProperties": False,
+                },
+                "local_place_knowledge",
+                60,
+                0,
+            ),
+            PlaceKnowledgeProvider(knowledge_service),
+            "批量更新地点知识卡",
+            private_scope=True,
+        )
+    )
     tool_gateway = ToolGateway(tool_store_factory, SystemClock(), tuple(registered_tools))
     health_service = HealthService(
         checks=(
@@ -430,6 +503,7 @@ def build_container(settings: Settings | None = None) -> Container:
         knowledge_service=knowledge_service,
         login_rate_limiter=LoginRateLimiter(),
         invite_registration_rate_limiter=LoginRateLimiter(attempts=3, window_seconds=600),
+        runtime_config=runtime_config,
     )
 
 

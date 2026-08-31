@@ -580,6 +580,27 @@ h2 {
 .family-list li.is-active {
   outline: 2px solid rgb(44 107 76 / 28%);
 }
+.family-row-actions { display: flex; gap: 6px; }
+.family-row-actions button { min-height: 34px; padding: 0 10px; border: 0; border-radius: 9px; color: #315945; background: #dce9dc; font-size: .72rem; font-weight: 750; }
+.family-name-editor { display: grid; gap: 4px; color: #52675b; font-size: .68rem; }
+.family-name-editor input { width: min(220px, 48vw); padding: 8px; border: 1px solid rgb(49 89 69 / 18%); border-radius: 9px; background: #fff; }
+.conversation-toolbar .conversation-delete { color: #9b4439; background: #f8e9e5; }
+
+.integration-settings { display: grid; gap: 15px; }
+.integration-settings fieldset { margin: 0; padding: 12px; border: 1px solid rgb(49 89 69 / 11%); border-radius: 14px; }
+.integration-settings legend { padding: 0 7px; color: #315945; font-weight: 800; }
+.integration-fields { display: grid; gap: 11px; }
+.integration-fields > label { display: grid; gap: 5px; color: #40564a; font-size: .74rem; font-weight: 750; }
+.integration-fields > label > span { display: flex; align-items: center; gap: 6px; }
+.integration-fields em { padding: 2px 5px; border-radius: 5px; color: #896b2c; background: #fff2cd; font-size: .58rem; font-style: normal; }
+.integration-fields label > div { display: flex; gap: 6px; }
+.integration-fields input:not([type='checkbox']) { min-width: 0; flex: 1; padding: 9px; border: 1px solid rgb(49 89 69 / 16%); border-radius: 9px; background: #fff; }
+.integration-fields input[type='checkbox'] { width: 20px; height: 20px; accent-color: #315945; }
+.integration-fields label > div button { padding: 0 9px; border: 0; border-radius: 8px; color: #9b4439; background: #f8e9e5; }
+.integration-fields label > small { color: #78877f; font-size: .64rem; font-weight: 500; }
+.integration-settings > footer { display: grid; gap: 6px; }
+.integration-settings > footer small { color: #748079; }
+.settings-notice { margin: 0; padding: 9px 11px; border-radius: 10px; color: #315945; background: #e8f2e7; }
 
 .family-switch,
 .small-button,
@@ -1481,6 +1502,8 @@ h2 {
 .guide-candidate-scroll { display: grid; gap: 8px; max-height: 420px; overflow-y: auto; }
 .guide-choice { position: relative; display: grid; grid-template-columns: 22px 26px 1fr; gap: 7px; padding: 11px; border: 1px solid transparent; border-radius: 13px; background: #fff; cursor: pointer; }
 .guide-choice.is-selected { border-color: #668e75; box-shadow: 0 5px 18px rgb(43 81 62 / 9%); }
+.guide-choice.is-local { border-color: rgb(184 143 59 / 32%); background: #fff9e9; }
+.guide-choice.is-local .guide-choice-number { background: #ad842e; }
 .guide-choice input { margin-top: 3px; accent-color: #315945; }
 .guide-choice-number { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; color: #fff; background: #668e75; font-size: .68rem; }
 .guide-choice strong,
@@ -1489,6 +1512,14 @@ h2 {
 .guide-choice a { color: #315945; font-size: .72rem; font-weight: 750; }
 .guide-candidate-module > footer > button:first-child { width: 100%; padding: 10px 12px; border: 0; border-radius: 12px; color: #fff; background: #315945; font-weight: 800; }
 .guide-candidate-module > footer > button:disabled { opacity: .48; }
+.place-artifact-module { display: grid; gap: 9px; margin-top: 13px; padding: 12px; border: 1px solid rgb(49 89 69 / 13%); border-radius: 16px; background: #f4f7f1; }
+.place-artifact-module > header { display: flex; align-items: center; justify-content: space-between; }
+.place-artifact-module > header span { padding: 4px 7px; border-radius: 999px; color: #315945; background: #dfeae1; font-size: .68rem; }
+.place-artifact-module > div { display: grid; gap: 7px; }
+.place-artifact-module article { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 10px; border-radius: 12px; background: #fff; }
+.place-artifact-module article strong,
+.place-artifact-module article small { display: block; }
+.place-artifact-module article small { margin-top: 3px; color: #718077; font-size: .68rem; }
 
 .guide-library-page { display: grid; gap: 15px; padding: 12px 12px 90px; }
 .page-title-row { display: flex; align-items: flex-end; justify-content: space-between; padding: 10px 4px; }
@@ -1501,7 +1532,8 @@ h2 {
 .guide-library-grid { display: grid; gap: 13px; }
 .guide-library-card { overflow: hidden; border: 1px solid rgb(49 89 69 / 10%); border-radius: 20px; background: #fff; box-shadow: 0 12px 32px rgb(31 62 46 / 7%); }
 .guide-library-card.is-pinned { border-color: #b88f3b; }
-.guide-library-card > img { width: 100%; height: 190px; object-fit: cover; background: #e4ebe4; }
+.guide-cover { display: block; width: 100%; padding: 0; border: 0; background: #e4ebe4; cursor: zoom-in; }
+.guide-cover img { display: block; width: 100%; height: 190px; object-fit: cover; }
 .guide-library-body { display: grid; gap: 11px; padding: 15px; }
 .guide-library-body > header { display: flex; align-items: flex-start; justify-content: space-between; }
 .guide-library-body h3,
@@ -1511,13 +1543,16 @@ h2 {
 .guide-library-body > header button { border: 0; color: #a87c25; background: transparent; font-size: 1.25rem; }
 .guide-meta { display: flex; flex-wrap: wrap; gap: 6px; }
 .guide-meta span { padding: 4px 7px; border-radius: 8px; color: #52675b; background: #eff4ef; font-size: .68rem; }
+.guide-tags { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.guide-tags span { flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; color: #38604a; background: #e9f2ea; font-size: .68rem; }
 .guide-library-body > footer { display: flex; gap: 8px; align-items: center; }
 .guide-library-body > footer button,
 .guide-library-body > footer a { padding: 7px 8px; border: 0; color: #315945; background: transparent; font-size: .74rem; font-weight: 750; }
 .guide-library-body > footer .danger-link { margin-left: auto; color: #a94435; }
 .guide-detail { display: grid; gap: 13px; padding-top: 10px; border-top: 1px solid rgb(49 89 69 / 9%); }
 .guide-image-strip { display: flex; gap: 8px; overflow-x: auto; }
-.guide-image-strip img { width: 145px; height: 180px; flex: 0 0 auto; border-radius: 12px; object-fit: cover; }
+.guide-image-strip button { width: 145px; height: 180px; flex: 0 0 auto; padding: 0; overflow: hidden; border: 0; border-radius: 12px; background: #e4ebe4; cursor: zoom-in; }
+.guide-image-strip img { width: 100%; height: 100%; object-fit: cover; }
 .guide-full-text { white-space: pre-wrap; color: #354c3f; font-size: .84rem; line-height: 1.75; }
 .guide-detail blockquote { margin: 7px 0; padding: 9px 11px; border-left: 3px solid #8aab95; border-radius: 0 10px 10px 0; color: #53665a; background: #f1f5f0; font-size: .76rem; }
 .guide-detail blockquote strong { display: block; margin-bottom: 3px; color: #2e4939; }
@@ -1527,6 +1562,15 @@ h2 {
 .guide-editor input,
 .guide-editor textarea { width: 100%; padding: 9px; border: 1px solid rgb(49 89 69 / 16%); border-radius: 9px; background: #fff; }
 .guide-editor > div { display: flex; justify-content: flex-end; gap: 8px; }
+.guide-lightbox { position: fixed; z-index: 120; inset: 0; display: grid; grid-template-rows: auto 1fr; color: #fff; background: rgb(5 10 7 / 94%); }
+.guide-lightbox > header { display: grid; grid-template-columns: 58px 1fr 44px; align-items: center; gap: 8px; padding: max(12px, env(safe-area-inset-top)) 12px 10px; }
+.guide-lightbox > header strong { overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.guide-lightbox > header button { width: 40px; height: 40px; border: 0; border-radius: 50%; color: #fff; background: rgb(255 255 255 / 12%); font-size: 1.6rem; }
+.guide-lightbox-stage { position: relative; display: grid; min-height: 0; place-items: center; touch-action: pan-y; }
+.guide-lightbox-stage img { width: 100%; max-width: 980px; max-height: calc(100vh - 80px); object-fit: contain; }
+.guide-lightbox-stage button { position: absolute; top: 50%; width: 42px; height: 54px; border: 0; border-radius: 12px; color: #fff; background: rgb(0 0 0 / 42%); font-size: 2rem; transform: translateY(-50%); }
+.guide-lightbox-stage .is-prev { left: 8px; }
+.guide-lightbox-stage .is-next { right: 8px; }
 .place-knowledge-control { position: relative; margin-top: 7px; }
 .place-knowledge-control > button { padding: 4px 8px; border: 0; border-radius: 8px; color: #315945; background: #e3ece3; font-size: .66rem; font-weight: 800; }
 .place-knowledge-popover { display: grid; gap: 8px; margin-top: 7px; padding: 11px; border: 1px solid rgb(49 89 69 / 12%); border-radius: 13px; color: #354b3e; background: #f7faf5; }

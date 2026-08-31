@@ -76,6 +76,7 @@ class GuideCandidateRow(Base):
     content_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
     images_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
     comments_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+    tags_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
     metadata_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
     user_notes_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
     status: Mapped[str] = mapped_column(String(20), default="discovered")

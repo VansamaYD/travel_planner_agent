@@ -25,6 +25,13 @@ export interface GuideCandidateArtifactItem {
 export interface MessageArtifact {
   type: string
   guides?: GuideCandidateArtifactItem[]
+  cards?: Array<{
+    card_id: string
+    name: string
+    city: string
+    version: number
+    status: string
+  }>
 }
 
 export interface AgentStreamEvent {
@@ -50,6 +57,13 @@ export async function createConversation(csrfToken: string): Promise<Conversatio
 export async function listConversations(signal?: AbortSignal): Promise<Conversation[]> {
   const response = await fetch('/api/v1/conversations', { signal })
   return (await parse<Envelope<Conversation[]>>(response)).data
+}
+
+export async function deleteConversation(id: string, csrfToken: string): Promise<void> {
+  const response = await fetch(`/api/v1/conversations/${id}`, {
+    method: 'DELETE', headers: { 'X-CSRF-Token': csrfToken },
+  })
+  if (!response.ok) await throwProblem(response)
 }
 
 export async function listMessages(

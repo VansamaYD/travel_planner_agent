@@ -18,9 +18,9 @@ COPY apps/api /app/apps/api
 COPY deploy/api-entrypoint.sh /app/deploy/api-entrypoint.sh
 RUN uv sync --project /app/apps/api --frozen --no-dev \
     && chmod 0555 /app/deploy/api-entrypoint.sh \
-    && mkdir -p /data/db /data/files /data/exports /data/cache /data/tmp \
+    && mkdir -p /data/db /data/files /data/exports /data/cache /data/tmp /config \
     && useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin travel \
-    && chown -R travel:travel /data
+    && chown -R travel:travel /data /config
 
 USER 10001
 WORKDIR /app

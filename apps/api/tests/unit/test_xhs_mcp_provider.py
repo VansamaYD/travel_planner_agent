@@ -81,7 +81,7 @@ async def test_xhs_connector_reads_and_normalizes_selected_guide_detail() -> Non
                     "imageList": [{"urlDefault": "https://img.example/1.jpg"}],
                     "interactInfo": {"likedCount": "12", "commentCount": "3"},
                 },
-                "comments": [{"content": "路线很顺", "user": {"nickname": "B"}}],
+                "comments": {"list": [{"content": "路线很顺", "userInfo": {"nickname": "B"}}]},
             }
         }
         return httpx.Response(
@@ -102,3 +102,31 @@ async def test_xhs_connector_reads_and_normalizes_selected_guide_detail() -> Non
     assert result["content"] == "第一天园林。第二天古镇"
     assert result["images"] == ["https://img.example/1.jpg"]
     assert result["comments"][0]["content"] == "路线很顺"
+    assert result["comments"][0]["author"] == "B"
+
+
+@pytest.mark.asyncio
+async def test_xhs_connector_can_explicitly_load_all_comments() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        if payload["method"] == "initialize":
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {}})
+        if payload["method"] == "notifications/initialized":
+            return httpx.Response(202)
+        assert payload["params"]["arguments"]["load_all_comments"] is True
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {"content": [{"type": "text", "text": '{"data":{"note":{}}}'}]},
+            },
+        )
+
+    provider = XiaohongshuMcpProvider(
+        "http://worker:18060/mcp", 30, 8, transport=httpx.MockTransport(handler)
+    )
+    await provider.execute(
+        "guide_detail_xhs",
+        {"feed_id": "note-1", "xsec_token": "token-1", "load_all_comments": True},
+    )

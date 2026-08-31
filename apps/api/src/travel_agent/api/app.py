@@ -24,6 +24,7 @@ from travel_agent.api.http.routers.health import router as health_router
 from travel_agent.api.http.routers.itinerary import router as itinerary_router
 from travel_agent.api.http.routers.knowledge import router as knowledge_router
 from travel_agent.api.http.routers.planning import router as planning_router
+from travel_agent.api.http.routers.settings import router as settings_router
 from travel_agent.api.http.routers.tools import router as tools_router
 from travel_agent.api.http.routers.trips import router as trips_router
 from travel_agent.bootstrap.container import Container, build_container
@@ -73,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(itinerary_router)
     app.include_router(knowledge_router)
     app.include_router(planning_router)
+    app.include_router(settings_router)
     return app
 
 

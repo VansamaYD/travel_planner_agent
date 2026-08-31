@@ -208,6 +208,21 @@ async def test_conversation_mutations_require_csrf(client: httpx.AsyncClient) ->
 
 
 @pytest.mark.asyncio
+async def test_conversation_can_be_deleted_with_its_history(client: httpx.AsyncClient) -> None:
+    csrf = await initialize(client)
+    created = await client.post("/api/v1/conversations", headers={"X-CSRF-Token": csrf})
+    conversation_id = created.json()["data"]["id"]
+
+    rejected = await client.delete(f"/api/v1/conversations/{conversation_id}")
+    assert rejected.status_code == 403
+    deleted = await client.delete(
+        f"/api/v1/conversations/{conversation_id}", headers={"X-CSRF-Token": csrf}
+    )
+    assert deleted.status_code == 204
+    assert (await client.get("/api/v1/conversations")).json()["data"] == []
+
+
+@pytest.mark.asyncio
 async def test_conversation_stream_exposes_auditable_tool_progress(
     client: httpx.AsyncClient, app: FastAPI
 ) -> None:

@@ -68,6 +68,7 @@ class GuideCandidate:
     content: str
     images: tuple[str, ...]
     comments: tuple[dict[str, object], ...]
+    tags: tuple[str, ...]
     metadata: dict[str, object]
     user_notes: str
     fetched_at: datetime

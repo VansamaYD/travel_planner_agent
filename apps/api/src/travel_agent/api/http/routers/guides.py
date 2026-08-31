@@ -66,6 +66,7 @@ def _guide(value: GuideCandidate, now: datetime) -> dict[str, object]:
         "content": value.content,
         "images": list(value.images),
         "comments": list(value.comments),
+        "tags": list(value.tags),
         "metadata": value.metadata,
         "user_notes": value.user_notes,
         "fetched_at": value.fetched_at.isoformat(),
@@ -185,6 +186,24 @@ async def update_guide(
     )
     if value is None:
         raise HTTPException(status_code=404, detail="攻略不存在。")
+    return {"data": _guide(value, container.tool_gateway.now())}
+
+
+@router.post("/{guide_id}/comments/refresh")
+async def refresh_guide_comments(
+    guide_id: str,
+    request: Request,
+    x_csrf_token: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    container = _container(request)
+    session = await _session(request)
+    _csrf(session, x_csrf_token)
+    try:
+        value = await container.tool_gateway.import_guide(
+            session.user.id, guide_id, load_all_comments=True
+        )
+    except ToolError as error:
+        raise HTTPException(status_code=502, detail=str(error) or "评论刷新失败。") from error
     return {"data": _guide(value, container.tool_gateway.now())}
 
 

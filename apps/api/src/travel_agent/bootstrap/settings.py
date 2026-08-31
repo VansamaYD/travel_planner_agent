@@ -36,6 +36,10 @@ class Settings(BaseSettings):
         default=Path("data"),
         validation_alias=AliasChoices("TRAVEL_DATA_ROOT", "DATA_ROOT"),
     )
+    config_root: Path = Field(
+        default=Path("config"),
+        validation_alias=AliasChoices("TRAVEL_CONFIG_ROOT", "CONFIG_ROOT"),
+    )
     database_url: str | None = Field(
         default=None,
         validation_alias=AliasChoices("DATABASE_URL", "TRAVEL_DATABASE_URL"),
@@ -79,6 +83,13 @@ class Settings(BaseSettings):
     amap_js_security_key: SecretStr | None = Field(
         default=None, validation_alias="AMAP_JS_SECURITY_KEY"
     )
+    baidu_map_server_ak: SecretStr | None = Field(
+        default=None, validation_alias="BAIDU_MAP_SERVER_AK"
+    )
+    baidu_map_server_sk: SecretStr | None = Field(
+        default=None, validation_alias="BAIDU_MAP_SERVER_SK"
+    )
+    baidu_map_js_ak: SecretStr | None = Field(default=None, validation_alias="BAIDU_MAP_JS_AK")
     qweather_api_host: str = Field(default="", validation_alias="QWEATHER_API_HOST")
     qweather_api_key: SecretStr | None = Field(default=None, validation_alias="QWEATHER_API_KEY")
     external_tool_timeout_seconds: int = Field(
@@ -112,6 +123,12 @@ class Settings(BaseSettings):
     xhs_max_results_per_query: int = Field(
         default=8, ge=1, le=10, validation_alias="XHS_MAX_RESULTS_PER_QUERY"
     )
+    smtp_host: str = Field(default="", validation_alias="SMTP_HOST")
+    smtp_port: int = Field(default=465, ge=1, le=65535, validation_alias="SMTP_PORT")
+    smtp_username: str = Field(default="", validation_alias="SMTP_USERNAME")
+    smtp_password: SecretStr | None = Field(default=None, validation_alias="SMTP_PASSWORD")
+    smtp_use_tls: bool = Field(default=True, validation_alias="SMTP_USE_TLS")
+    smtp_from_address: str = Field(default="", validation_alias="SMTP_FROM_ADDRESS")
 
     @field_validator("log_level")
     @classmethod
@@ -134,6 +151,7 @@ class Settings(BaseSettings):
     def ensure_runtime_directories(self) -> None:
         for child in ("db", "files", "exports", "cache", "tmp"):
             (self.data_root / child).mkdir(parents=True, exist_ok=True)
+        self.config_root.mkdir(parents=True, exist_ok=True)
 
 
 @lru_cache(maxsize=1)

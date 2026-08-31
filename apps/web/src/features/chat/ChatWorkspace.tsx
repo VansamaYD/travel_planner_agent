@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { SessionData } from '../../shared/api/access'
 import {
   createConversation,
+  deleteConversation,
   listConversations,
   listMessages,
   streamConversationMessage,
@@ -12,8 +13,13 @@ import {
 } from '../../shared/api/conversations'
 import { GuideCandidateCards } from './GuideCandidateCards'
 import { mergeGuideArtifacts } from './mergeGuideArtifacts'
+import { PlaceKnowledgeButton } from '../trips/PlaceKnowledgeButton'
 
-interface ChatWorkspaceProps { session: SessionData; onOpenLibrary: () => void }
+interface ChatWorkspaceProps {
+  session: SessionData
+  onOpenLibrary: () => void
+  initialDraft?: { id: number; text: string } | null
+}
 interface ActivityStep { key: string; label: string; status: 'active' | 'done' | 'failed' }
 
 const suggestions = [
@@ -23,7 +29,7 @@ const suggestions = [
   ['整理攻略', '我有多份旅游攻略需要整理，请先告诉我如何提供资料。'],
 ] as const
 
-export function ChatWorkspace({ session, onOpenLibrary }: ChatWorkspaceProps) {
+export function ChatWorkspace({ session, onOpenLibrary, initialDraft }: ChatWorkspaceProps) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -50,6 +56,10 @@ export function ChatWorkspace({ session, onOpenLibrary }: ChatWorkspaceProps) {
     return () => controller.abort()
   }, [])
 
+  useEffect(() => {
+    if (initialDraft) setDraft(initialDraft.text)
+  }, [initialDraft])
+
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, activity])
 
   async function selectConversation(id: string) {
@@ -65,6 +75,22 @@ export function ChatWorkspace({ session, onOpenLibrary }: ChatWorkspaceProps) {
     setLoading(true)
     try { setMessages(await listMessages(id)) } catch (reason) { setError(messageOf(reason)) }
     finally { setLoading(false) }
+  }
+
+  async function removeConversation() {
+    if (!conversationId || sending) return
+    const current = conversations.find((item) => item.id === conversationId)
+    if (!window.confirm(`删除对话“${current?.title ?? '当前对话'}”？其中的消息和执行记录也会删除。`)) return
+    setError('')
+    try {
+      await deleteConversation(conversationId, session.csrf_token)
+      const remaining = conversations.filter((item) => item.id !== conversationId)
+      setConversations(remaining)
+      const next = remaining[0]
+      setConversationId(next?.id ?? null)
+      setMessages(next ? await listMessages(next.id) : [])
+      setActivity([])
+    } catch (reason) { setError(messageOf(reason)) }
   }
 
   async function submit(event?: FormEvent, suggested?: string) {
@@ -121,7 +147,7 @@ export function ChatWorkspace({ session, onOpenLibrary }: ChatWorkspaceProps) {
       failActivity(label)
       return
     }
-    if (event.event === 'artifact.guides' && event.artifact) {
+    if (event.event.startsWith('artifact.') && event.artifact) {
       setMessages((items) => items.map((item) => item.id === assistantId
         ? { ...item, artifacts: [...item.artifacts, event.artifact!] } : item))
       return
@@ -151,6 +177,7 @@ export function ChatWorkspace({ session, onOpenLibrary }: ChatWorkspaceProps) {
         {conversations.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
       </select>
       <button disabled={sending} onClick={() => void selectConversation('')} type="button">+新对话</button>
+      {conversationId && <button className="conversation-delete" disabled={sending} onClick={() => void removeConversation()} type="button">删除</button>}
     </div>
 
     <div className={`chat-scroll ${hasMessages ? 'has-messages' : ''}`}>
@@ -161,7 +188,7 @@ export function ChatWorkspace({ session, onOpenLibrary }: ChatWorkspaceProps) {
       {loading && <p className="chat-loading">正在读取对话…</p>}
       {messages.map((message) => <article className={`chat-message is-${message.role}`} key={message.id}>
         <span>{message.role === 'assistant' ? '旅' : session.user.display_name.slice(0, 1)}</span>
-        <div>{message.content ? <MessageContent content={message.content} /> : <i className="typing-dot">●●●</i>}<MergedGuideArtifacts artifacts={message.artifacts} onOpenLibrary={onOpenLibrary} session={session} /></div>
+        <div>{message.content ? <MessageContent content={message.content} /> : <i className="typing-dot">●●●</i>}<MergedGuideArtifacts artifacts={message.artifacts} onOpenLibrary={onOpenLibrary} session={session} /><PlaceCardArtifacts artifacts={message.artifacts} /></div>
       </article>)}
       {activity.length > 0 && <details className="agent-activity" key={activityKey} open={sending || undefined}>
         <summary><span className={sending ? 'activity-pulse' : ''} />{sending ? activity.at(-1)?.label : '本次执行详情'}<small>{sending ? '进行中' : '已完成'}</small></summary>
@@ -180,6 +207,19 @@ export function ChatWorkspace({ session, onOpenLibrary }: ChatWorkspaceProps) {
       <button aria-label={sending ? '正在回复' : '发送'} disabled={sending || !draft.trim()} type="submit">{sending ? '···' : '↑'}</button>
     </form>
   </section>
+}
+
+function PlaceCardArtifacts({ artifacts }: { artifacts: ChatMessage['artifacts'] }) {
+  const cards = useMemo(() => {
+    const unique = new Map<string, NonNullable<ChatMessage['artifacts'][number]['cards']>[number]>()
+    for (const artifact of artifacts) {
+      if (artifact.type !== 'place_cards') continue
+      for (const card of artifact.cards ?? []) unique.set(card.card_id, card)
+    }
+    return [...unique.values()]
+  }, [artifacts])
+  if (!cards.length) return null
+  return <section className="place-artifact-module"><header><strong>本轮更新的地点卡</strong><span>{cards.length} 张</span></header><div>{cards.map((card) => <article key={card.card_id}><div><strong>{card.name}</strong><small>{card.city} · v{card.version}</small></div><PlaceKnowledgeButton city={card.city} name={card.name} /></article>)}</div></section>
 }
 
 function localMessage(id: string, role: ChatMessage['role'], content: string): ChatMessage {

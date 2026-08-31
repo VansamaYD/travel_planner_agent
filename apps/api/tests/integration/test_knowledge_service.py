@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from sqlalchemy import func, select
 
 from travel_agent.bootstrap.settings import Settings
@@ -117,3 +118,66 @@ async def test_place_cards_are_versioned_and_image_analysis_is_deduplicated(
     assert place_count == 1
     assert len(image_rows) == 1
     assert image_url.encode() not in image_rows[0].source_url_ciphertext
+
+
+@pytest.mark.asyncio
+async def test_agent_tool_accepts_nested_place_card_details(
+    client: httpx.AsyncClient, app: FastAPI
+) -> None:
+    owner_id = await initialize(client)
+    result = await app.state.container.tool_gateway.execute(
+        "place_knowledge_upsert",
+        {
+            "name": "栈桥",
+            "city": "青岛",
+            "entity_type": "attraction",
+            "intro": "青岛老城地标",
+            "details": {
+                "tags": ["海滨", "日落"],
+                "prices": [{"name": "门票", "amount": 0}],
+                "reservation": {"required": False},
+            },
+            "evidence_source": "guide:note-1",
+            "confidence": "0.7",
+        },
+        owner_id,
+    )
+
+    assert result.data["status"] == "knowledge_updated"
+    card = await app.state.container.knowledge_service.find_place(owner_id, "栈桥", "青岛")
+    assert card is not None
+    assert card.details["tags"] == ["海滨", "日落"]
+
+
+@pytest.mark.asyncio
+async def test_agent_tool_batch_upserts_multiple_place_cards(
+    client: httpx.AsyncClient, app: FastAPI
+) -> None:
+    owner_id = await initialize(client)
+    result = await app.state.container.tool_gateway.execute(
+        "place_knowledge_batch_upsert",
+        {
+            "cards": [
+                {
+                    "name": "八大关",
+                    "city": "青岛市",
+                    "entity_type": "attraction",
+                    "details": {"tags": ["建筑", "citywalk"]},
+                    "evidence_source": "guide:note-2",
+                },
+                {
+                    "name": "青岛站",
+                    "city": "青岛",
+                    "entity_type": "transport_hub",
+                    "details": {"transport": {"metro": ["1号线", "3号线"]}},
+                    "evidence_source": "guide:note-2",
+                },
+            ]
+        },
+        owner_id,
+    )
+
+    assert result.data["status"] == "knowledge_batch_updated"
+    assert len(result.data["cards"]) == 2
+    assert await app.state.container.knowledge_service.find_place(owner_id, "八大关", "青岛")
+    assert await app.state.container.knowledge_service.find_place(owner_id, "青岛站", "青岛市")

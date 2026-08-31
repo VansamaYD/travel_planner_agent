@@ -5,7 +5,7 @@ from datetime import datetime
 from types import TracebackType
 from typing import Protocol, Self
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from travel_agent.modules.conversations.domain import AgentRun, ChatMessage, Conversation
@@ -207,6 +207,14 @@ class SqlAlchemyConversationStore:
                 updated_at=updated_at,
             )
         )
+
+    async def delete(self, conversation_id: str) -> bool:
+        result = await self.session.execute(
+            delete(ConversationRow)
+            .where(ConversationRow.id == conversation_id)
+            .returning(ConversationRow.id)
+        )
+        return result.scalar_one_or_none() is not None
 
     def _add_message(self, value: ChatMessage) -> None:
         self.session.add(

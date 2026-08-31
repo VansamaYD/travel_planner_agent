@@ -198,9 +198,12 @@ class ToolGateway:
             await store.commit()
             return deleted
 
-    async def import_guide(self, owner_user_id: str, guide_id: str) -> GuideCandidate:
+    async def import_guide(
+        self, owner_user_id: str, guide_id: str, *, load_all_comments: bool = False
+    ) -> GuideCandidate:
         async with self._store_factory() as store:
             credentials = await store.guide_credentials(owner_user_id, guide_id)
+            existing = await store.get_guide(owner_user_id, guide_id)
             if credentials is None:
                 raise ToolInputError("攻略候选不存在。")
             await store.set_guide_status(owner_user_id, guide_id, "downloading", self._clock.now())
@@ -212,8 +215,13 @@ class ToolGateway:
         try:
             result = await self.execute(
                 "guide_detail_xhs",
-                {"feed_id": feed_id, "xsec_token": token},
+                {
+                    "feed_id": feed_id,
+                    "xsec_token": token,
+                    "load_all_comments": load_all_comments,
+                },
                 owner_user_id,
+                bypass_cache=load_all_comments or bool(existing and existing.status == "ready"),
             )
             async with self._store_factory() as store:
                 value = await store.save_guide_detail(
@@ -245,7 +253,14 @@ class ToolGateway:
         async with self._store_factory() as store:
             return await store.usage_summary(owner_user_id, since)
 
-    async def execute(self, name: str, args: dict[str, object], owner_user_id: str) -> ToolResult:
+    async def execute(
+        self,
+        name: str,
+        args: dict[str, object],
+        owner_user_id: str,
+        *,
+        bypass_cache: bool = False,
+    ) -> ToolResult:
         tool = self._tools.get(name)
         if tool is None:
             raise ToolInputError("模型请求了未授权的工具。")
@@ -260,9 +275,11 @@ class ToolGateway:
         async with self._store_factory() as store:
             key_hash = store.key_hash(canonical)
             scope_hash = store.scope_hash(scope)
-            cached = await store.get_cache(key_hash, self._clock.now())
+            cached = None if bypass_cache else await store.get_cache(key_hash, self._clock.now())
             if cached is not None and cached.expires_at > self._clock.now():
                 result = self._cached_result(tool, cached, "hit")
+                if name == "guide_search_xhs":
+                    await self._enrich_guide_statuses(store, owner_user_id, result.data)
                 await self._usage(store, owner_user_id, tool, key_hash, "hit", "ok", result)
                 await store.commit()
                 return result
@@ -271,7 +288,13 @@ class ToolGateway:
         async with lock:
             try:
                 return await self._fetch(
-                    tool, normalized, owner_user_id, key_hash, scope_hash, cached
+                    tool,
+                    normalized,
+                    owner_user_id,
+                    key_hash,
+                    scope_hash,
+                    cached,
+                    bypass_cache,
                 )
             finally:
                 self._locks.pop(key_hash, None)
@@ -284,11 +307,14 @@ class ToolGateway:
         key_hash: str,
         scope_hash: str,
         stale: CacheRecord | None,
+        bypass_cache: bool = False,
     ) -> ToolResult:
         async with self._store_factory() as store:
-            second = await store.get_cache(key_hash, self._clock.now())
+            second = None if bypass_cache else await store.get_cache(key_hash, self._clock.now())
             if second is not None and second.expires_at > self._clock.now():
                 result = self._cached_result(tool, second, "hit")
+                if tool.descriptor.name == "guide_search_xhs":
+                    await self._enrich_guide_statuses(store, owner_user_id, result.data)
                 await self._usage(store, owner_user_id, tool, key_hash, "hit", "ok", result)
                 await store.commit()
                 return result
@@ -317,8 +343,10 @@ class ToolGateway:
                         for guide in normalized_guides:
                             external_id = str(guide.get("id") or guide.get("url") or "")
                             if external_id in identities:
-                                guide["candidate_id"] = identities[external_id]
-                                guide["status"] = "discovered"
+                                candidate_id = identities[external_id]
+                                guide["candidate_id"] = candidate_id
+                                saved = await store.get_guide(owner_user_id, candidate_id)
+                                guide["status"] = saved.status if saved else "discovered"
                 await store.put_cache(
                     key_hash=key_hash,
                     provider=tool.provider.name,
@@ -359,6 +387,8 @@ class ToolGateway:
                     ("上游查询失败, 已返回过期缓存; 请核对关键信息。",),
                 )
                 async with self._store_factory() as store:
+                    if tool.descriptor.name == "guide_search_xhs":
+                        await self._enrich_guide_statuses(store, owner_user_id, result.data)
                     await self._usage(
                         store,
                         owner_user_id,
@@ -416,6 +446,23 @@ class ToolGateway:
         )
 
     @staticmethod
+    async def _enrich_guide_statuses(
+        store: ToolStore, owner_user_id: str, data: dict[str, object]
+    ) -> None:
+        guides = data.get("guides")
+        if not isinstance(guides, list):
+            return
+        for guide in guides:
+            if not isinstance(guide, dict):
+                continue
+            candidate_id = str(guide.get("candidate_id") or "")
+            if not candidate_id:
+                continue
+            saved = await store.get_guide(owner_user_id, candidate_id)
+            if saved is not None:
+                guide["status"] = saved.status
+
+    @staticmethod
     def _cached_result(
         tool: RegisteredTool,
         cached: CacheRecord,
@@ -448,15 +495,31 @@ class ToolGateway:
 def _normalize(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ToolInputError("工具参数必须是对象。")
-    normalized: dict[str, object] = {}
-    for key, item in sorted(value.items()):
-        if isinstance(item, str):
-            normalized[str(key)] = " ".join(item.split())
-        elif isinstance(item, (int, float, bool)) or item is None:
-            normalized[str(key)] = item
-        else:
-            raise ToolInputError("工具参数包含不支持的结构。")
+    normalized = _normalize_value(value, depth=0)
+    if not isinstance(normalized, dict):
+        raise ToolInputError("工具参数必须是对象。")
     return normalized
+
+
+def _normalize_value(value: object, depth: int) -> object:
+    if depth > 8:
+        raise ToolInputError("工具参数嵌套过深。")
+    if isinstance(value, dict):
+        if len(value) > 80:
+            raise ToolInputError("工具参数字段过多。")
+        return {
+            str(key): _normalize_value(item, depth + 1)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, list):
+        if len(value) > 100:
+            raise ToolInputError("工具参数列表过长。")
+        return [_normalize_value(item, depth + 1) for item in value]
+    if isinstance(value, str):
+        return " ".join(value.split())
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    raise ToolInputError("工具参数包含不支持的结构。")
 
 
 def _result_count(data: dict[str, object]) -> int:

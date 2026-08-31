@@ -138,7 +138,14 @@ async def test_guide_results_are_encrypted_and_scoped_to_user(
         clock,
         (RegisteredTool(descriptor, GuideProvider(), "搜索攻略", private_scope=True),),
     )
-    await gateway.execute("guide_search_xhs", {"query": "苏州攻略"}, owner_id)
+    searched = await gateway.execute("guide_search_xhs", {"query": "苏州攻略"}, owner_id)
+    guide_id = searched.data["guides"][0]["candidate_id"]
+    async with SqlAlchemyToolStore(database.session_factory, protector) as store:
+        await store.set_guide_status(owner_id, guide_id, "ready", clock.now())
+        await store.commit()
+    cached = await gateway.execute("guide_search_xhs", {"query": "苏州攻略"}, owner_id)
+    assert cached.cache_status == "hit"
+    assert cached.data["guides"][0]["status"] == "ready"
 
     listed = await client.get("/api/v1/guides?scope=all")
     assert listed.status_code == 200
