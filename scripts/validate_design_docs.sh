@@ -8,6 +8,14 @@ trace_doc="$design_dir/10-requirements-traceability-and-gap-analysis.md"
 
 failures=0
 
+search_text() {
+  if command -v rg >/dev/null 2>&1; then
+    rg "$@"
+  else
+    grep -E "$@"
+  fi
+}
+
 pass() {
   echo "PASS $1"
 }
@@ -40,12 +48,12 @@ done
 
 requirement_ids="$(mktemp)"
 trap 'rm -f "$requirement_ids"' EXIT
-rg -o '^(\*\*)?(FR|NFR)-[A-Z]+-[0-9]{3}' "$srs" | sed 's/^\*\*//' | sort > "$requirement_ids"
+search_text -o '^(\*\*)?(FR|NFR)-[A-Z]+-[0-9]{3}' "$srs" | sed 's/^\*\*//' | sort > "$requirement_ids"
 
 requirement_count="$(wc -l < "$requirement_ids" | tr -d ' ')"
 unique_count="$(sort -u "$requirement_ids" | wc -l | tr -d ' ')"
-fr_count="$(rg -c '^FR-' "$requirement_ids")"
-nfr_count="$(rg -c '^NFR-' "$requirement_ids")"
+fr_count="$(search_text -c '^FR-' "$requirement_ids")"
+nfr_count="$(search_text -c '^NFR-' "$requirement_ids")"
 
 if [[ "$requirement_count" = "267" && "$unique_count" = "267" ]]; then
   pass "267 unique FR/NFR definitions"
@@ -59,14 +67,14 @@ else
   fail "requirement split expected FR=220 NFR=47, got FR=$fr_count NFR=$nfr_count"
 fi
 
-dr_count="$(rg -o '^\*\*DR-[0-9]{3}' "$srs" | sort -u | wc -l | tr -d ' ')"
-ac_count="$(rg -o '^### AC-[0-9]{3}' "$srs" | sort -u | wc -l | tr -d ' ')"
+dr_count="$(search_text -o '^\*\*DR-[0-9]{3}' "$srs" | sort -u | wc -l | tr -d ' ')"
+ac_count="$(search_text -o '^### AC-[0-9]{3}' "$srs" | sort -u | wc -l | tr -d ' ')"
 if [[ "$dr_count" = "7" ]]; then pass "DR-001..007 present"; else fail "expected 7 DR, got $dr_count"; fi
 if [[ "$ac_count" = "11" ]]; then pass "AC-001..011 present"; else fail "expected 11 AC, got $ac_count"; fi
 
 while IFS=$'\t' read -r prefix first_id last_id; do
   last_number="${last_id##*-}"
-  if rg -q "${first_id}～${last_number}" "$trace_doc"; then
+  if search_text -q "${first_id}～${last_number}" "$trace_doc"; then
     pass "trace range present: $first_id..$last_id"
   else
     fail "trace range missing endpoint: $first_id..$last_id"
@@ -83,7 +91,7 @@ done < <(awk -F- '
 ' "$requirement_ids" | sort)
 
 for doc in "$design_dir"/*.md; do
-  fence_count="$(rg -c '^```' "$doc" || true)"
+  fence_count="$(search_text -c '^```' "$doc" || true)"
   if (( fence_count % 2 == 0 )); then
     pass "balanced fences: $(basename "$doc")"
   else
@@ -109,15 +117,15 @@ else
   failures=$((failures + link_failures))
 fi
 
-if rg -q '\| (Conflict|Missing) \|' "$trace_doc"; then
+if search_text -q '\| (Conflict|Missing) \|' "$trace_doc"; then
   fail "trace matrix contains unresolved Conflict/Missing status"
 else
   pass "no unresolved Conflict/Missing status"
 fi
 
-if rg -q '单图 20 MB.*单 PDF 50 MB.*单次 20 文件.*家庭 20 GB' "$trace_doc" \
-  && rg -q '\| 图片.*\| 20 MB \|' "$design_dir/04-api-sse-and-file-contracts.md" \
-  && rg -q '\| PDF.*\| 50 MB \|' "$design_dir/04-api-sse-and-file-contracts.md"; then
+if search_text -q '单图 20 MB.*单 PDF 50 MB.*单次 20 文件.*家庭 20 GB' "$trace_doc" \
+  && search_text -q '\| 图片.*\| 20 MB \|' "$design_dir/04-api-sse-and-file-contracts.md" \
+  && search_text -q '\| PDF.*\| 50 MB \|' "$design_dir/04-api-sse-and-file-contracts.md"; then
   pass "file limit baseline aligned"
 else
   fail "file limit baseline not aligned"

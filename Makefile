@@ -14,13 +14,13 @@ dev-web:
 	npm run web:dev
 
 test:
-	uv run --project apps/api pytest
+	uv run --project apps/api pytest apps/api
 	npm run web:test
 
 lint:
 	uv run --project apps/api ruff check apps/api/src apps/api/tests
 	uv run --project apps/api ruff format --check apps/api/src apps/api/tests
-	uv run --project apps/api mypy
+	uv run --project apps/api mypy apps/api/src
 	cd apps/api && .venv/bin/lint-imports
 	npm run web:lint
 
