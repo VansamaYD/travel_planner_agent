@@ -34,6 +34,29 @@ export interface ItineraryPlan {
   created_at: string
 }
 
+export interface ItineraryMapPoint {
+  logical_id: string
+  day_id: string
+  day_index: number
+  sequence: number
+  city: string
+  title: string
+  place_name: string
+  longitude: number | null
+  latitude: number | null
+  address: string
+  map_url: string
+  status: 'resolved' | 'unresolved'
+}
+
+export interface ItineraryMapData {
+  enabled: boolean
+  js_api_key: string
+  js_security_key: string
+  points: ItineraryMapPoint[]
+  warnings: string[]
+}
+
 interface Envelope<T> { data: T }
 
 export async function getItinerary(tripId: string, signal?: AbortSignal): Promise<ItineraryPlan | null> {
@@ -61,6 +84,16 @@ export async function updateItinerary(
     body: JSON.stringify({ expected_version: version, days }),
   })
   return (await parse<Envelope<ItineraryPlan>>(response)).data
+}
+
+export async function getItineraryMap(
+  tripId: string,
+  dayIndex: number | null,
+  signal?: AbortSignal,
+): Promise<ItineraryMapData> {
+  const query = dayIndex === null ? '' : `?day_index=${dayIndex}`
+  const response = await fetch(`/api/v1/trips/${tripId}/itinerary/map-points${query}`, { signal })
+  return (await parse<Envelope<ItineraryMapData>>(response)).data
 }
 
 async function parse<T>(response: Response): Promise<T> {

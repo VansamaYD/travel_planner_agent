@@ -120,9 +120,11 @@ export function ChatWorkspace({ session }: ChatWorkspaceProps) {
       return
     }
     if (event.label) {
+      const status: ActivityStep['status'] = event.event.endsWith('.failed')
+        ? 'failed' : event.event.endsWith('.completed') ? 'done' : 'active'
       setActivity((steps) => [
         ...steps.map((step) => step.status === 'active' ? { ...step, status: 'done' as const } : step),
-        { key: `${event.event}-${steps.length}`, label: event.label!, status: event.event === 'run.completed' ? 'done' : 'active' },
+        { key: `${event.event}-${steps.length}`, label: event.label!, status },
       ])
     }
   }
@@ -152,7 +154,7 @@ export function ChatWorkspace({ session }: ChatWorkspaceProps) {
       {loading && <p className="chat-loading">正在读取对话…</p>}
       {messages.map((message) => <article className={`chat-message is-${message.role}`} key={message.id}>
         <span>{message.role === 'assistant' ? '旅' : session.user.display_name.slice(0, 1)}</span>
-        <div>{message.content || <i className="typing-dot">●●●</i>}</div>
+        <div>{message.content ? <MessageContent content={message.content} /> : <i className="typing-dot">●●●</i>}</div>
       </article>)}
       {activity.length > 0 && <details className="agent-activity" key={activityKey} open={sending || undefined}>
         <summary><span className={sending ? 'activity-pulse' : ''} />{sending ? activity.at(-1)?.label : '本次执行详情'}<small>{sending ? '进行中' : '已完成'}</small></summary>
@@ -179,4 +181,10 @@ function localMessage(id: string, role: ChatMessage['role'], content: string): C
 
 function messageOf(reason: unknown): string {
   return reason instanceof Error ? reason.message : '未知错误'
+}
+
+function MessageContent({ content }: { content: string }) {
+  return <>{content.split(/(https?:\/\/[^\s]+)/g).map((part, index) => part.startsWith('http')
+    ? <a href={part} key={`${part}-${index}`} rel="noreferrer" target="_blank">{part}</a>
+    : part)}</>
 }

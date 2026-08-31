@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date, datetime
 from typing import Annotated, Literal, cast
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Header, Request, status
+from fastapi import APIRouter, Header, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from travel_agent.bootstrap.container import Container
 from travel_agent.modules.access.application.errors import AuthenticationRequiredError
 from travel_agent.modules.access.domain.models import AuthenticatedSession
 from travel_agent.modules.itinerary.application.service import DayInput, ItemInput
-from travel_agent.modules.itinerary.domain.models import ItineraryPlan
+from travel_agent.modules.itinerary.domain.models import ItineraryDay, ItineraryItem, ItineraryPlan
+from travel_agent.modules.tools.domain import ToolError
 
 router = APIRouter(prefix="/api/v1/trips/{trip_id}/itinerary", tags=["itinerary"])
 
@@ -97,6 +100,29 @@ class ItineraryResponse(BaseModel):
 class VersionListResponse(BaseModel):
     data: tuple[VersionData, ...]
     meta: MetaResponse
+
+
+class MapPointData(BaseModel):
+    logical_id: str
+    day_id: str
+    day_index: int
+    sequence: int
+    city: str
+    title: str
+    place_name: str
+    longitude: float | None
+    latitude: float | None
+    address: str
+    map_url: str
+    status: Literal["resolved", "unresolved"]
+
+
+class ItineraryMapData(BaseModel):
+    enabled: bool
+    js_api_key: str
+    js_security_key: str
+    points: tuple[MapPointData, ...]
+    warnings: tuple[str, ...]
 
 
 def _container(request: Request) -> Container:
@@ -199,3 +225,97 @@ async def list_itinerary_versions(trip_id: str, request: Request) -> VersionList
         ),
         meta=MetaResponse(request_id=_request_id(request)),
     )
+
+
+@router.get("/map-points")
+async def get_itinerary_map_points(
+    trip_id: str,
+    request: Request,
+    day_index: Annotated[int | None, Query(ge=0, le=59)] = None,
+) -> dict[str, object]:
+    container = _container(request)
+    session = await _session(request)
+    plan = await container.itinerary_service.get(session, trip_id)
+    selected_days = (
+        tuple(enumerate(plan.days))
+        if day_index is None
+        else tuple((index, day) for index, day in enumerate(plan.days) if index == day_index)
+    )
+    candidates = [
+        (index, sequence, day, item)
+        for index, day in selected_days
+        for sequence, item in enumerate(day.items)
+        if item.place_name or item.title
+    ][:30]
+    semaphore = asyncio.Semaphore(3)
+
+    async def resolve(candidate: tuple[int, int, ItineraryDay, ItineraryItem]) -> MapPointData:
+        day_index, sequence, day, item = candidate
+        city = day.city
+        place_name = item.place_name or item.title
+        map_url = "https://uri.amap.com/search?" + urlencode_map(place_name, city)
+        try:
+            async with semaphore:
+                result = await container.tool_gateway.execute(
+                    "place_search", {"query": place_name, "city": city}, session.user.id
+                )
+            places = result.data.get("places")
+            place = places[0] if isinstance(places, list) and places else {}
+            if isinstance(place, dict):
+                longitude = _float_or_none(place.get("longitude"))
+                latitude = _float_or_none(place.get("latitude"))
+                if longitude is None or latitude is None:
+                    raise ToolError("地点坐标缺失。")
+                return MapPointData(
+                    logical_id=item.logical_id,
+                    day_id=day.id,
+                    day_index=day_index,
+                    sequence=sequence,
+                    city=city,
+                    title=item.title,
+                    place_name=place_name,
+                    longitude=longitude,
+                    latitude=latitude,
+                    address=str(place.get("address") or ""),
+                    map_url=map_url,
+                    status="resolved",
+                )
+        except ToolError:
+            pass
+        return MapPointData(
+            logical_id=item.logical_id,
+            day_id=day.id,
+            day_index=day_index,
+            sequence=sequence,
+            city=city,
+            title=item.title,
+            place_name=place_name,
+            longitude=None,
+            latitude=None,
+            address="",
+            map_url=map_url,
+            status="unresolved",
+        )
+
+    points = tuple(await asyncio.gather(*(resolve(value) for value in candidates)))
+    js_key = container.settings.amap_js_api_key
+    security_key = container.settings.amap_js_security_key
+    data = ItineraryMapData(
+        enabled=js_key is not None and bool(js_key.get_secret_value()),
+        js_api_key=js_key.get_secret_value() if js_key is not None else "",
+        js_security_key=security_key.get_secret_value() if security_key is not None else "",
+        points=points,
+        warnings=("最多展示前 30 个行程点。",) if len(candidates) == 30 else (),
+    )
+    return {"data": data, "meta": {"request_id": _request_id(request)}}
+
+
+def urlencode_map(place_name: str, city: str) -> str:
+    return urlencode({"keyword": place_name, "city": city, "src": "travel_planner_agent"})
+
+
+def _float_or_none(value: object) -> float | None:
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return None

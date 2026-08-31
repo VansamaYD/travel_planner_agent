@@ -104,6 +104,19 @@ async def test_itinerary_initialization_editing_and_versions(
     assert updated.json()["data"]["version"] == 2
     assert updated.json()["data"]["estimated_total_cost_cents"] == 23000
 
+    map_data = await client.get(f"/api/v1/trips/{trip_id}/itinerary/map-points")
+    assert map_data.status_code == 200
+    assert map_data.json()["data"]["enabled"] is False
+    assert [point["place_name"] for point in map_data.json()["data"]["points"]] == [
+        "拙政园",
+        "待选苏帮菜",
+    ]
+    assert all(point["status"] == "unresolved" for point in map_data.json()["data"]["points"])
+
+    other_day_map = await client.get(f"/api/v1/trips/{trip_id}/itinerary/map-points?day_index=1")
+    assert other_day_map.status_code == 200
+    assert other_day_map.json()["data"]["points"] == []
+
     stale = await client.put(
         f"/api/v1/trips/{trip_id}/itinerary",
         headers={"X-CSRF-Token": csrf},

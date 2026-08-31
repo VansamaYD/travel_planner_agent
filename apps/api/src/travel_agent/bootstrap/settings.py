@@ -65,6 +65,43 @@ class Settings(BaseSettings):
     model_planning_max_output_tokens: int = Field(
         default=8192, ge=512, le=32768, validation_alias="MODEL_PLANNING_MAX_OUTPUT_TOKENS"
     )
+    amap_web_service_key: SecretStr | None = Field(
+        default=None, validation_alias="AMAP_WEB_SERVICE_KEY"
+    )
+    amap_js_api_key: SecretStr | None = Field(default=None, validation_alias="AMAP_JS_API_KEY")
+    amap_js_security_key: SecretStr | None = Field(
+        default=None, validation_alias="AMAP_JS_SECURITY_KEY"
+    )
+    qweather_api_host: str = Field(default="", validation_alias="QWEATHER_API_HOST")
+    qweather_api_key: SecretStr | None = Field(default=None, validation_alias="QWEATHER_API_KEY")
+    external_tool_timeout_seconds: int = Field(
+        default=15, ge=3, le=60, validation_alias="EXTERNAL_TOOL_TIMEOUT_SECONDS"
+    )
+    map_cache_ttl_seconds: int = Field(
+        default=604800, ge=300, le=2592000, validation_alias="MAP_CACHE_TTL_SECONDS"
+    )
+    route_cache_ttl_seconds: int = Field(
+        default=1800, ge=60, le=86400, validation_alias="ROUTE_CACHE_TTL_SECONDS"
+    )
+    weather_cache_ttl_seconds: int = Field(
+        default=7200, ge=300, le=21600, validation_alias="WEATHER_CACHE_TTL_SECONDS"
+    )
+    external_cache_stale_seconds: int = Field(
+        default=604800, ge=0, le=2592000, validation_alias="EXTERNAL_CACHE_STALE_SECONDS"
+    )
+    xhs_research_enabled: bool = Field(default=False, validation_alias="XHS_RESEARCH_ENABLED")
+    xhs_mcp_endpoint: str = Field(
+        default="http://xhs-browser-worker:18060/mcp", validation_alias="XHS_MCP_ENDPOINT"
+    )
+    xhs_search_timeout_seconds: int = Field(
+        default=45, ge=10, le=120, validation_alias="XHS_SEARCH_TIMEOUT_SECONDS"
+    )
+    xhs_search_cache_ttl_seconds: int = Field(
+        default=21600, ge=300, le=604800, validation_alias="XHS_SEARCH_CACHE_TTL_SECONDS"
+    )
+    xhs_max_results_per_query: int = Field(
+        default=8, ge=1, le=10, validation_alias="XHS_MAX_RESULTS_PER_QUERY"
+    )
 
     @field_validator("log_level")
     @classmethod

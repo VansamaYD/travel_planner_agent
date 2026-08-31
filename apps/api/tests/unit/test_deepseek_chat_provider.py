@@ -32,5 +32,54 @@ async def test_chat_provider_streams_only_visible_answer_content() -> None:
         4096,
         transport=httpx.MockTransport(handler),
     )
-    chunks = [chunk async for chunk in provider.stream((("user", "你好"),))]
-    assert chunks == ["你", "好"]
+    events = [
+        event
+        async for event in provider.stream_turn(
+            ({"role": "user", "content": "你好"},),
+            (),
+        )
+    ]
+    assert [event.text for event in events] == ["你", "好"]
+
+
+@pytest.mark.asyncio
+async def test_chat_provider_aggregates_streamed_tool_call_arguments() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["tool_choice"] == "auto"
+        assert payload["tools"][0]["function"]["name"] == "place_search"
+        return httpx.Response(
+            200,
+            text=(
+                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1",'
+                '"function":{"name":"place_search","arguments":"{\\"query\\":"}}]}}]}\n\n'
+                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+                '"function":{"arguments":"\\"拙政园\\"}"}}]}}]}\n\n'
+                "data: [DONE]\n\n"
+            ),
+            headers={"content-type": "text/event-stream"},
+        )
+
+    provider = DeepSeekChatProvider(
+        "test-key",
+        "https://api.deepseek.com/",
+        "deepseek-chat",
+        30,
+        4096,
+        transport=httpx.MockTransport(handler),
+    )
+    events = [
+        event
+        async for event in provider.stream_turn(
+            ({"role": "user", "content": "查地点"},),
+            (
+                {
+                    "type": "function",
+                    "function": {"name": "place_search", "parameters": {"type": "object"}},
+                },
+            ),
+        )
+    ]
+    assert events[0].tool_call_id == "call-1"
+    assert events[0].tool_name == "place_search"
+    assert json.loads(events[0].tool_arguments) == {"query": "拙政园"}

@@ -28,3 +28,12 @@ class AgentRun:
     status: str
     created_at: datetime
     completed_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class ModelStreamEvent:
+    kind: str
+    text: str = ""
+    tool_call_id: str = ""
+    tool_name: str = ""
+    tool_arguments: str = ""

@@ -18,9 +18,11 @@ from travel_agent.api.http.routers.access import router as access_router
 from travel_agent.api.http.routers.conversations import router as conversations_router
 from travel_agent.api.http.routers.family_invites import router as family_invites_router
 from travel_agent.api.http.routers.family_members import router as family_members_router
+from travel_agent.api.http.routers.guides import router as guides_router
 from travel_agent.api.http.routers.health import router as health_router
 from travel_agent.api.http.routers.itinerary import router as itinerary_router
 from travel_agent.api.http.routers.planning import router as planning_router
+from travel_agent.api.http.routers.tools import router as tools_router
 from travel_agent.api.http.routers.trips import router as trips_router
 from travel_agent.bootstrap.container import Container, build_container
 from travel_agent.bootstrap.settings import Settings
@@ -59,6 +61,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(access_router)
     app.include_router(conversations_router)
+    app.include_router(guides_router)
+    app.include_router(tools_router)
     app.include_router(family_members_router)
     app.include_router(family_invites_router)
     app.include_router(trips_router)

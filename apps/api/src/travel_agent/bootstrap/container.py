@@ -37,6 +37,14 @@ from travel_agent.modules.planning.infrastructure.provider import (
     DisabledModelProvider,
 )
 from travel_agent.modules.planning.infrastructure.store import SqlAlchemyPlanningStore
+from travel_agent.modules.tools.domain import ToolDescriptor
+from travel_agent.modules.tools.providers import (
+    AmapProvider,
+    QWeatherProvider,
+    XiaohongshuMcpProvider,
+)
+from travel_agent.modules.tools.runtime import RegisteredTool, ToolGateway
+from travel_agent.modules.tools.store import SqlAlchemyToolStore
 from travel_agent.modules.trips.application.ports import TripStore
 from travel_agent.modules.trips.application.service import TripService
 from travel_agent.modules.trips.infrastructure.store import SqlAlchemyTripStore
@@ -55,6 +63,7 @@ class Container:
     itinerary_service: ItineraryService
     planning_service: PlanningService
     conversation_service: ConversationService
+    tool_gateway: ToolGateway
     login_rate_limiter: LoginRateLimiter
     invite_registration_rate_limiter: LoginRateLimiter
 
@@ -89,6 +98,9 @@ def build_container(settings: Settings | None = None) -> Container:
     def planning_store_factory() -> PlanningStore:
         return SqlAlchemyPlanningStore(database.session_factory, protector)
 
+    def tool_store_factory() -> SqlAlchemyToolStore:
+        return SqlAlchemyToolStore(database.session_factory, protector)
+
     password_hasher = Argon2idHasher()
     token_issuer = SecureTokenIssuer()
     access_service = AccessService(
@@ -121,6 +133,113 @@ def build_container(settings: Settings | None = None) -> Container:
         if deepseek_key is not None and resolved_settings.deepseek_model
         else DisabledChatProvider()
     )
+    amap_key = _secret(resolved_settings.amap_web_service_key)
+    qweather_key = _secret(resolved_settings.qweather_api_key)
+    amap_provider = AmapProvider(amap_key, resolved_settings.external_tool_timeout_seconds)
+    registered_tools: list[RegisteredTool] = []
+    if amap_key:
+        registered_tools.extend(
+            [
+                RegisteredTool(
+                    ToolDescriptor(
+                        "place_search",
+                        "查询中国境内景点、餐厅、酒店、车站等地点。需要精确地点、地址、坐标或地图评分时使用。",
+                        {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string", "description": "地点或分类关键词"},
+                                "city": {"type": "string", "description": "城市名, 建议提供"},
+                            },
+                            "required": ["query"],
+                            "additionalProperties": False,
+                        },
+                        "amap",
+                        resolved_settings.map_cache_ttl_seconds,
+                        resolved_settings.external_cache_stale_seconds,
+                    ),
+                    amap_provider,
+                    "查询高德地点",
+                ),
+                RegisteredTool(
+                    ToolDescriptor(
+                        "route_quote",
+                        "查询两个中国境内地点之间的驾车、步行或公交路线时长、距离和费用线索。",
+                        {
+                            "type": "object",
+                            "properties": {
+                                "origin": {"type": "string"},
+                                "destination": {"type": "string"},
+                                "city": {"type": "string"},
+                                "mode": {
+                                    "type": "string",
+                                    "enum": ["driving", "walking", "transit"],
+                                },
+                            },
+                            "required": ["origin", "destination"],
+                            "additionalProperties": False,
+                        },
+                        "amap",
+                        resolved_settings.route_cache_ttl_seconds,
+                        resolved_settings.external_cache_stale_seconds,
+                    ),
+                    amap_provider,
+                    "计算高德路线",
+                ),
+            ]
+        )
+    if resolved_settings.qweather_api_host and qweather_key:
+        registered_tools.append(
+            RegisteredTool(
+                ToolDescriptor(
+                    "weather_forecast",
+                    "查询中国城市未来三天天气。天气默认只用于提示, 不应擅自大幅修改行程。",
+                    {
+                        "type": "object",
+                        "properties": {"city": {"type": "string"}},
+                        "required": ["city"],
+                        "additionalProperties": False,
+                    },
+                    "qweather",
+                    resolved_settings.weather_cache_ttl_seconds,
+                    resolved_settings.external_cache_stale_seconds,
+                ),
+                QWeatherProvider(
+                    resolved_settings.qweather_api_host,
+                    qweather_key,
+                    resolved_settings.external_tool_timeout_seconds,
+                ),
+                "查询和风天气",
+            )
+        )
+    if resolved_settings.xhs_research_enabled:
+        registered_tools.append(
+            RegisteredTool(
+                ToolDescriptor(
+                    "guide_search_xhs",
+                    (
+                        "使用用户主动启用的只读 Worker 搜索小红书旅游攻略。"
+                        "结果仅作为社区经验, 不是实时事实。"
+                    ),
+                    {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                        "additionalProperties": False,
+                    },
+                    "xiaohongshu",
+                    resolved_settings.xhs_search_cache_ttl_seconds,
+                    resolved_settings.external_cache_stale_seconds,
+                ),
+                XiaohongshuMcpProvider(
+                    resolved_settings.xhs_mcp_endpoint,
+                    resolved_settings.xhs_search_timeout_seconds,
+                    resolved_settings.xhs_max_results_per_query,
+                ),
+                "搜索小红书攻略",
+                private_scope=True,
+            )
+        )
+    tool_gateway = ToolGateway(tool_store_factory, SystemClock(), tuple(registered_tools))
     health_service = HealthService(
         checks=(
             DatabaseReadinessCheck(database),
@@ -158,8 +277,15 @@ def build_container(settings: Settings | None = None) -> Container:
         conversation_service=ConversationService(
             store_factory=lambda: SqlAlchemyConversationStore(database.session_factory, protector),
             provider=chat_provider,
+            tool_runtime=tool_gateway,
             clock=SystemClock(),
         ),
+        tool_gateway=tool_gateway,
         login_rate_limiter=LoginRateLimiter(),
         invite_registration_rate_limiter=LoginRateLimiter(attempts=3, window_seconds=600),
     )
+
+
+def _secret(value: object) -> str:
+    getter = getattr(value, "get_secret_value", None)
+    return str(getter()).strip() if callable(getter) else ""
