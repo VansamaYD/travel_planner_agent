@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import type { SessionData } from '../../shared/api/access'
 import {
@@ -11,6 +11,7 @@ import {
   type Conversation,
 } from '../../shared/api/conversations'
 import { GuideCandidateCards } from './GuideCandidateCards'
+import { mergeGuideArtifacts } from './mergeGuideArtifacts'
 
 interface ChatWorkspaceProps { session: SessionData; onOpenLibrary: () => void }
 interface ActivityStep { key: string; label: string; status: 'active' | 'done' | 'failed' }
@@ -160,8 +161,7 @@ export function ChatWorkspace({ session, onOpenLibrary }: ChatWorkspaceProps) {
       {loading && <p className="chat-loading">正在读取对话…</p>}
       {messages.map((message) => <article className={`chat-message is-${message.role}`} key={message.id}>
         <span>{message.role === 'assistant' ? '旅' : session.user.display_name.slice(0, 1)}</span>
-        <div>{message.content ? <MessageContent content={message.content} /> : <i className="typing-dot">●●●</i>}{message.artifacts.map((artifact, index) => artifact.type === 'guide_candidates'
-          ? <GuideCandidateCards artifact={artifact} key={`${message.id}-${index}`} onOpenLibrary={onOpenLibrary} session={session} /> : null)}</div>
+        <div>{message.content ? <MessageContent content={message.content} /> : <i className="typing-dot">●●●</i>}<MergedGuideArtifacts artifacts={message.artifacts} onOpenLibrary={onOpenLibrary} session={session} /></div>
       </article>)}
       {activity.length > 0 && <details className="agent-activity" key={activityKey} open={sending || undefined}>
         <summary><span className={sending ? 'activity-pulse' : ''} />{sending ? activity.at(-1)?.label : '本次执行详情'}<small>{sending ? '进行中' : '已完成'}</small></summary>
@@ -194,4 +194,15 @@ function MessageContent({ content }: { content: string }) {
   return <>{content.split(/(https?:\/\/[^\s]+)/g).map((part, index) => part.startsWith('http')
     ? <a href={part} key={`${part}-${index}`} rel="noreferrer" target="_blank">{part}</a>
     : part)}</>
+}
+
+function MergedGuideArtifacts({ artifacts, session, onOpenLibrary }: {
+  artifacts: ChatMessage['artifacts']
+  session: SessionData
+  onOpenLibrary: () => void
+}) {
+  const merged = useMemo(() => mergeGuideArtifacts(artifacts), [artifacts])
+  return merged
+    ? <GuideCandidateCards artifact={merged} onOpenLibrary={onOpenLibrary} session={session} />
+    : null
 }

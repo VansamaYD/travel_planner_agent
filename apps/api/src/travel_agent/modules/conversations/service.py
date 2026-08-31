@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
 import secrets
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from datetime import datetime
 from types import TracebackType
 from typing import Protocol
@@ -151,7 +153,8 @@ class ConversationService:
         yield {"event": "node.started", "node": "context", "label": "正在整理对话上下文"}
         sequence, chunks = 3, []
         artifacts: list[dict[str, object]] = []
-        artifact_signatures: set[tuple[str, ...]] = set()
+        guide_candidates: dict[str, _GuideCandidateAccumulator] = {}
+        tool_results: dict[str, ToolResult] = {}
         try:
             await self._event(
                 run.id,
@@ -217,19 +220,21 @@ class ConversationService:
                         arguments = json.loads(call.tool_arguments or "{}")
                         if not isinstance(arguments, dict):
                             raise ConversationError("工具参数不是对象。")
-                        tool_result = await self._tools.execute(
-                            call.tool_name, arguments, session.user.id
-                        )
-                        if call.tool_name == "place_search":
+                        request_key = _tool_request_key(call.tool_name, arguments)
+                        reused = request_key in tool_results
+                        if reused:
+                            tool_result = tool_results[request_key]
+                        else:
+                            tool_result = await self._tools.execute(
+                                call.tool_name, arguments, session.user.id
+                            )
+                            tool_results[request_key] = tool_result
+                        if call.tool_name == "place_search" and not reused:
                             await self._knowledge.capture_place_results(
                                 session.user.id, tool_result.data, "agent_place_search"
                             )
                         result_payload = tool_result.model_payload()
-                        cache_label = {
-                            "hit": "缓存命中",
-                            "miss": "已联网查询",
-                            "stale": "过期缓存降级",
-                        }.get(tool_result.cache_status, tool_result.cache_status)
+                        cache_label = _result_source_label(tool_result, reused)
                         event_type, event_label = "tool.completed", f"{label}完成 · {cache_label}"
                     except (json.JSONDecodeError, ToolError, ConversationError) as error:
                         result_payload = {
@@ -249,41 +254,12 @@ class ConversationService:
                         "tool": call.tool_name,
                         "label": event_label,
                     }
-                    if event_type == "tool.completed" and call.tool_name == "guide_search_xhs":
-                        tool_data = result_payload.get("data")
-                        guides = tool_data.get("guides", []) if isinstance(tool_data, dict) else []
-                        if isinstance(guides, list):
-                            candidate_ids = tuple(
-                                str(guide.get("candidate_id"))
-                                for guide in guides
-                                if isinstance(guide, dict) and guide.get("candidate_id")
-                            )
-                            artifact: dict[str, object] = {
-                                "type": "guide_candidates",
-                                "guides": [
-                                    {
-                                        key: value
-                                        for key, value in guide.items()
-                                        if key
-                                        in {
-                                            "candidate_id",
-                                            "title",
-                                            "author",
-                                            "summary",
-                                            "url",
-                                            "status",
-                                        }
-                                    }
-                                    for guide in guides
-                                    if isinstance(guide, dict) and guide.get("candidate_id")
-                                ],
-                            }
-                            if artifact["guides"] and candidate_ids not in artifact_signatures:
-                                artifact_signatures.add(candidate_ids)
-                                artifacts.append(artifact)
-                                await self._event(run.id, sequence, "artifact.guides", artifact)
-                                sequence += 1
-                                yield {"event": "artifact.guides", "artifact": artifact}
+                    if (
+                        event_type == "tool.completed"
+                        and call.tool_name == "guide_search_xhs"
+                        and not reused
+                    ):
+                        _collect_guide_candidates(guide_candidates, result_payload)
                     model_messages.append(
                         {
                             "role": "tool",
@@ -312,6 +288,12 @@ class ConversationService:
             answer = "".join(chunks).strip()
             if not answer:
                 raise ConversationError("模型未返回可展示的回答。")
+            guide_artifact = _build_guide_artifact(guide_candidates, content)
+            if guide_artifact is not None:
+                artifacts.append(guide_artifact)
+                await self._event(run.id, sequence, "artifact.guides", guide_artifact)
+                sequence += 1
+                yield {"event": "artifact.guides", "artifact": guide_artifact}
             assistant = ChatMessage(
                 new_uuid7(), conversation_id, "assistant", answer, self._clock.now()
             )
@@ -359,3 +341,135 @@ class ConversationService:
     def _title(content: str) -> str:
         compact = " ".join(content.split())
         return compact[:30] + ("…" if len(compact) > 30 else "")
+
+
+@dataclass(slots=True)
+class _GuideCandidateAccumulator:
+    candidate_id: str
+    title: str
+    author: str
+    summary: str
+    url: str
+    status: str
+    score: int
+    hits: int
+    first_seen: int
+
+    def merge(self, guide: dict[str, object], score: int) -> None:
+        self.hits += 1
+        self.score += score
+        for field in ("title", "author", "summary", "url", "status"):
+            incoming = str(guide.get(field) or "").strip()
+            current = getattr(self, field)
+            if incoming and (not current or len(incoming) > len(current)):
+                setattr(self, field, incoming)
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "candidate_id": self.candidate_id,
+            "title": self.title,
+            "author": self.author,
+            "summary": self.summary,
+            "url": self.url,
+            "status": self.status,
+        }
+
+
+def _tool_request_key(name: str, arguments: dict[str, object]) -> str:
+    def normalize(value: object) -> object:
+        if isinstance(value, dict):
+            return {key: normalize(item) for key, item in sorted(value.items())}
+        if isinstance(value, list):
+            return [normalize(item) for item in value]
+        if isinstance(value, str):
+            return " ".join(value.split())
+        return value
+
+    return json.dumps(
+        [name, normalize(arguments)], ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    )
+
+
+def _result_source_label(result: ToolResult, reused: bool) -> str:
+    if reused:
+        return "复用本轮结果"
+    if result.provider.startswith("local_"):
+        return {
+            "hit": "本地缓存命中",
+            "miss": "本地检索",
+            "stale": "本地陈旧缓存",
+        }.get(result.cache_status, result.cache_status)
+    return {
+        "hit": "缓存命中",
+        "miss": "已联网查询",
+        "stale": "过期缓存降级",
+    }.get(result.cache_status, result.cache_status)
+
+
+def _collect_guide_candidates(
+    candidates: dict[str, _GuideCandidateAccumulator], payload: dict[str, object]
+) -> None:
+    data = payload.get("data")
+    guides = data.get("guides", []) if isinstance(data, dict) else []
+    if not isinstance(guides, list):
+        return
+    result_count = len(guides)
+    for index, raw_guide in enumerate(guides):
+        if not isinstance(raw_guide, dict):
+            continue
+        candidate_id = str(raw_guide.get("candidate_id") or "").strip()
+        if not candidate_id:
+            continue
+        score = max(result_count - index, 1)
+        existing = candidates.get(candidate_id)
+        if existing is not None:
+            existing.merge(raw_guide, score)
+            continue
+        candidates[candidate_id] = _GuideCandidateAccumulator(
+            candidate_id=candidate_id,
+            title=str(raw_guide.get("title") or "").strip(),
+            author=str(raw_guide.get("author") or "").strip(),
+            summary=str(raw_guide.get("summary") or "").strip(),
+            url=str(raw_guide.get("url") or "").strip(),
+            status=str(raw_guide.get("status") or "").strip(),
+            score=score,
+            hits=1,
+            first_seen=len(candidates),
+        )
+
+
+def _build_guide_artifact(
+    candidates: dict[str, _GuideCandidateAccumulator], user_content: str
+) -> dict[str, object] | None:
+    if not candidates:
+        return None
+    ranked = sorted(
+        candidates.values(),
+        key=lambda item: (-item.hits, -item.score, item.first_seen),
+    )
+    limit = _requested_guide_limit(user_content)
+    return {
+        "type": "guide_candidates",
+        "guides": [candidate.payload() for candidate in ranked[:limit]],
+    }
+
+
+def _requested_guide_limit(content: str) -> int:
+    match = re.search(r"(?P<count>10|[1-9]|十|[一二两三四五六七八九])\s*篇", content)
+    if match is None:
+        return 8
+    chinese_counts = {
+        "一": 1,
+        "二": 2,
+        "两": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+        "十": 10,
+    }
+    raw = match.group("count")
+    return min(int(raw) if raw.isdigit() else chinese_counts[raw], 10)

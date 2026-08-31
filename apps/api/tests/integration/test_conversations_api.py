@@ -64,6 +64,76 @@ class FakeToolRuntime:
         )
 
 
+class OverlappingGuideProvider:
+    async def stream_turn(
+        self,
+        messages: tuple[dict[str, object], ...],
+        tools: tuple[dict[str, object], ...],
+    ) -> AsyncIterator[ModelStreamEvent]:
+        if messages[-1]["role"] == "tool":
+            yield ModelStreamEvent("text", text="已整理去重后的青岛攻略候选。")
+            return
+        for call_id, query in (
+            ("guide-1", "青岛四天三夜"),
+            ("guide-2", "青岛四天三夜"),
+            ("guide-3", "青岛避人流"),
+        ):
+            yield ModelStreamEvent(
+                "tool_call",
+                tool_call_id=call_id,
+                tool_name="guide_search_xhs",
+                tool_arguments=f'{{"query":"{query}"}}',
+            )
+
+
+class OverlappingGuideRuntime:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def model_descriptors(self) -> tuple[dict[str, object], ...]:
+        return ({"type": "function", "function": {"name": "guide_search_xhs"}},)
+
+    def label(self, name: str) -> str:
+        return "搜索小红书攻略"
+
+    async def execute(self, name: str, args: dict[str, object], owner_user_id: str) -> ToolResult:
+        self.calls += 1
+        now = datetime.now(UTC)
+        first = {
+            "candidate_id": "guide-a",
+            "title": "青岛四日路线",
+            "author": "甲",
+            "summary": "经典路线",
+            "url": "https://example.com/a",
+            "status": "discovered",
+        }
+        overlap = {
+            "candidate_id": "guide-b",
+            "title": "青岛避坑攻略",
+            "author": "乙",
+            "summary": "多关键词共同命中",
+            "url": "https://example.com/b",
+            "status": "discovered",
+        }
+        last = {
+            "candidate_id": "guide-c",
+            "title": "青岛慢游攻略",
+            "author": "丙",
+            "summary": "避开人流",
+            "url": "https://example.com/c",
+            "status": "discovered",
+        }
+        guides = [first, overlap] if args["query"] == "青岛四天三夜" else [overlap, last]
+        return ToolResult(
+            {"guides": guides},
+            "xiaohongshu",
+            name,
+            now,
+            now + timedelta(hours=6),
+            "miss",
+        )
+
+
 async def initialize(client: httpx.AsyncClient) -> str:
     response = await client.post(
         "/api/v1/setup/initialize",
@@ -156,3 +226,33 @@ async def test_conversation_stream_exposes_auditable_tool_progress(
     assert "已联网查询" in response.text
     messages = await client.get(f"/api/v1/conversations/{conversation_id}/messages")
     assert messages.json()["data"][-1]["content"] == "拙政园地址已经通过高德查询。"
+
+
+@pytest.mark.asyncio
+async def test_guide_searches_reuse_exact_calls_and_emit_one_ranked_artifact(
+    client: httpx.AsyncClient, app: FastAPI
+) -> None:
+    runtime = OverlappingGuideRuntime()
+    app.state.container.conversation_service._provider = OverlappingGuideProvider()
+    app.state.container.conversation_service._tools = runtime
+    csrf = await initialize(client)
+    created = await client.post("/api/v1/conversations", headers={"X-CSRF-Token": csrf})
+    conversation_id = created.json()["data"]["id"]
+
+    response = await client.post(
+        f"/api/v1/conversations/{conversation_id}/messages/stream",
+        headers={"X-CSRF-Token": csrf},
+        json={"content": "请找两篇青岛攻略"},
+    )
+
+    assert response.status_code == 200
+    assert runtime.calls == 2
+    assert response.text.count("event: artifact.guides") == 1
+    assert "复用本轮结果" in response.text
+    messages = await client.get(f"/api/v1/conversations/{conversation_id}/messages")
+    artifacts = messages.json()["data"][-1]["artifacts"]
+    assert len(artifacts) == 1
+    assert [guide["candidate_id"] for guide in artifacts[0]["guides"]] == [
+        "guide-b",
+        "guide-a",
+    ]
