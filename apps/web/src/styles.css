@@ -696,6 +696,374 @@ h2 {
   margin-top: 18px;
 }
 
+.trip-form {
+  display: grid;
+  gap: 15px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #edf2e9;
+}
+
+.trip-form-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.trip-form-heading span,
+.trip-card small {
+  color: #64756c;
+  font-size: 0.75rem;
+}
+
+.trip-form label:not(.confirmation-row),
+.trip-form fieldset {
+  display: grid;
+  gap: 6px;
+}
+
+.trip-form label > span,
+.trip-form legend {
+  color: #35483e;
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.trip-form input:not([type="checkbox"]),
+.trip-form textarea,
+.trip-form select {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 11px;
+  border: 1px solid rgb(18 55 42 / 18%);
+  border-radius: 11px;
+  color: inherit;
+  background: #fff;
+}
+
+.trip-form fieldset {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid rgb(18 55 42 / 12%);
+  border-radius: 12px;
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.choice-grid label {
+  display: flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 7px !important;
+  min-height: 34px;
+  font-size: 0.82rem;
+}
+
+.trip-list {
+  display: grid;
+  gap: 10px;
+}
+
+.recycle-toggle {
+  display: block;
+  margin: -10px 0 14px auto;
+  padding: 5px 0;
+  border: 0;
+  color: #64756c;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.recycle-card {
+  cursor: default;
+}
+
+.recycle-card .small-button {
+  justify-self: start;
+  margin-top: 5px;
+}
+
+.trip-card {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  padding: 15px;
+  border: 1px solid rgb(18 55 42 / 11%);
+  border-radius: 15px;
+  color: inherit;
+  background: #fdfefb;
+  cursor: pointer;
+  text-align: left;
+}
+
+.trip-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.trip-card > span:not(.trip-card-top) {
+  color: #486155;
+  font-size: 0.88rem;
+}
+
+.empty-state {
+  margin: 0;
+  padding: 14px 2px;
+  line-height: 1.6;
+}
+
+.trip-detail {
+  display: grid;
+  gap: 13px;
+  margin-top: 16px;
+  padding-top: 18px;
+  border-top: 1px solid rgb(18 55 42 / 10%);
+}
+
+.trip-detail h3 {
+  margin: 0;
+  font-family: Georgia, "Noto Serif SC", serif;
+  font-size: 1.35rem;
+  font-weight: 500;
+}
+
+.trip-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #725824;
+  background: #f2e5c8;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.trip-detail dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.trip-detail dl div {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 10px;
+}
+
+.trip-detail dt { color: #64756c; font-size: 0.8rem; }
+.trip-detail dd { margin: 0; font-size: 0.88rem; }
+
+.version-history {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgb(18 55 42 / 10%);
+}
+
+.version-history div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #486155;
+  font-size: 0.78rem;
+}
+
+.version-history small { color: #64756c; }
+
+.trip-delete-button {
+  min-height: 44px;
+}
+
+.delete-confirmation {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f5dfd8;
+}
+
+.delete-confirmation p {
+  margin: 0;
+  color: #722f25;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.delete-confirmation div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.itinerary-section {
+  display: grid;
+  gap: 13px;
+  margin: 8px -4px 0;
+  padding: 18px 4px;
+  border-top: 1px solid rgb(18 55 42 / 10%);
+  border-bottom: 1px solid rgb(18 55 42 / 10%);
+}
+
+.itinerary-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.itinerary-heading small {
+  color: #64756c;
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+.itinerary-empty {
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+  border-radius: 14px;
+  background: #edf2e9;
+}
+
+.itinerary-empty p,
+.itinerary-loading {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.day-list {
+  display: grid;
+  gap: 12px;
+}
+
+.day-card {
+  overflow: hidden;
+  border: 1px solid rgb(18 55 42 / 11%);
+  border-radius: 15px;
+  background: #fdfefb;
+}
+
+.day-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 13px;
+  color: #eaf1e9;
+  background: #315945;
+}
+
+.day-card > header span {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.day-title,
+.day-fields {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+}
+
+.day-title span {
+  color: #64756c;
+  font-size: 0.78rem;
+}
+
+.day-fields input,
+.itinerary-item-edit input,
+.itinerary-item-edit select {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid rgb(18 55 42 / 18%);
+  border-radius: 10px;
+  color: inherit;
+  background: #fff;
+}
+
+.itinerary-items {
+  display: grid;
+}
+
+.itinerary-item {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 9px;
+  padding: 11px 13px;
+  border-top: 1px solid rgb(18 55 42 / 8%);
+}
+
+.itinerary-item time {
+  color: #517161;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+}
+
+.itinerary-item strong,
+.itinerary-item span {
+  display: block;
+}
+
+.itinerary-item span,
+.itinerary-item small {
+  margin-top: 3px;
+  color: #64756c;
+  font-size: 0.72rem;
+}
+
+.itinerary-item small {
+  grid-column: 2;
+}
+
+.itinerary-item-edit {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border-top: 1px solid rgb(18 55 42 / 8%);
+  background: #edf2e9;
+}
+
+.itinerary-item-edit label {
+  display: grid;
+  gap: 5px;
+}
+
+.itinerary-item-edit label > span {
+  color: #35483e;
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.day-empty {
+  margin: 0;
+  padding: 8px 13px 14px;
+  font-size: 0.78rem;
+}
+
+.add-item-button {
+  margin: 0 13px 13px;
+}
+
+.itinerary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.itinerary-actions .primary-button {
+  flex: 1;
+}
+
 @media (min-width: 640px) {
   .app-shell {
     padding-right: 28px;

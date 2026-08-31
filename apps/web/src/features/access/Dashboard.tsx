@@ -5,6 +5,7 @@ import { SystemStatus } from '../system-status'
 import { FamilyMembers } from './FamilyMembers'
 import { FamilyInvites } from './FamilyInvites'
 import { JoinFamilyPrompt } from './JoinFamilyPrompt'
+import { TripsWorkspace } from '../trips/TripsWorkspace'
 
 interface DashboardProps {
   session: SessionData
@@ -73,13 +74,7 @@ export function Dashboard({ session, onLoggedOut, onSessionChanged }: DashboardP
 
       {activeFamily && <FamilyMembers family={activeFamily} session={session} />}
       {activeFamily && (activeFamily.role === 'owner' || activeFamily.role === 'admin') && <FamilyInvites family={activeFamily} session={session} />}
-
-      <section className="panel next-action" aria-labelledby="next-action-title">
-        <p className="section-kicker">NEXT VERTICAL SLICE</p>
-        <h2 id="next-action-title">创建第一趟旅行</h2>
-        <p className="muted">成员与偏好档案已经就绪，下一步接入旅行草稿、参与者快照和版本历史。</p>
-        <button className="primary-button" disabled type="button">即将开放</button>
-      </section>
+      {activeFamily && <TripsWorkspace family={activeFamily} session={session} />}
 
       <SystemStatus />
     </>

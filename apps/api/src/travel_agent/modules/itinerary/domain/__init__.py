@@ -1,0 +1,1 @@
+"""Itinerary domain model."""

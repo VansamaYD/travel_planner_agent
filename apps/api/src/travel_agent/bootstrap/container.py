@@ -18,12 +18,18 @@ from travel_agent.modules.access.infrastructure.security import (
     resolve_protection_key,
 )
 from travel_agent.modules.access.infrastructure.store import SqlAlchemyAccessStore
+from travel_agent.modules.itinerary.application.ports import ItineraryStore
+from travel_agent.modules.itinerary.application.service import ItineraryService
+from travel_agent.modules.itinerary.infrastructure.store import SqlAlchemyItineraryStore
 from travel_agent.modules.operations.application.health import HealthService
 from travel_agent.modules.operations.infrastructure.health_checks import (
     DatabaseReadinessCheck,
     DirectoryReadinessCheck,
     MasterKeyReadinessCheck,
 )
+from travel_agent.modules.trips.application.ports import TripStore
+from travel_agent.modules.trips.application.service import TripService
+from travel_agent.modules.trips.infrastructure.store import SqlAlchemyTripStore
 from travel_agent.shared.infrastructure.db.database import Database
 
 
@@ -35,6 +41,8 @@ class Container:
     access_service: AccessService
     family_member_service: FamilyMemberService
     family_invite_service: FamilyInviteService
+    trip_service: TripService
+    itinerary_service: ItineraryService
     login_rate_limiter: LoginRateLimiter
     invite_registration_rate_limiter: LoginRateLimiter
 
@@ -59,6 +67,12 @@ def build_container(settings: Settings | None = None) -> Container:
 
     def invite_store_factory() -> SqlAlchemyInviteStore:
         return SqlAlchemyInviteStore(database.session_factory, protector)
+
+    def trip_store_factory() -> TripStore:
+        return SqlAlchemyTripStore(database.session_factory, protector)
+
+    def itinerary_store_factory() -> ItineraryStore:
+        return SqlAlchemyItineraryStore(database.session_factory, protector)
 
     password_hasher = Argon2idHasher()
     token_issuer = SecureTokenIssuer()
@@ -91,6 +105,10 @@ def build_container(settings: Settings | None = None) -> Container:
             token_issuer=token_issuer,
             password_hasher=password_hasher,
             clock=SystemClock(),
+        ),
+        trip_service=TripService(store_factory=trip_store_factory, clock=SystemClock()),
+        itinerary_service=ItineraryService(
+            store_factory=itinerary_store_factory, clock=SystemClock()
         ),
         login_rate_limiter=LoginRateLimiter(),
         invite_registration_rate_limiter=LoginRateLimiter(attempts=3, window_seconds=600),

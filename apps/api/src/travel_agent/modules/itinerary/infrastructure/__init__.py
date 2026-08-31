@@ -1,0 +1,1 @@
+"""Itinerary persistence adapters."""

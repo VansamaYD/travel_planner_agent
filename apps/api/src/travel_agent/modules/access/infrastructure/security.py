@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import hmac
 import os
 import secrets
 from datetime import UTC, datetime
@@ -42,6 +43,7 @@ class AesGcmTextProtector:
     _version = b"TP1"
 
     def __init__(self, key: bytes) -> None:
+        self._key = key
         self._cipher = AESGCM(key)
 
     def encrypt(self, value: str, *, context: str) -> bytes:
@@ -56,6 +58,13 @@ class AesGcmTextProtector:
         ciphertext = payload[15:]
         plaintext = self._cipher.decrypt(nonce, ciphertext, context.encode("utf-8"))
         return plaintext.decode("utf-8")
+
+    def digest(self, value: str, *, context: str) -> str:
+        """Create a keyed digest so low-entropy encrypted snapshots cannot be guessed."""
+
+        return hmac.new(
+            self._key, context.encode("utf-8") + b"\0" + value.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
 
 
 class SecureTokenIssuer:

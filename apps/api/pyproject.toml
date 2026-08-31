@@ -70,6 +70,8 @@ type = "forbidden"
 source_modules = [
   "travel_agent.modules.access.application",
   "travel_agent.modules.operations.application",
+  "travel_agent.modules.trips.application",
+  "travel_agent.modules.itinerary.application",
 ]
 forbidden_modules = [
   "fastapi",

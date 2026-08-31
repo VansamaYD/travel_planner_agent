@@ -17,6 +17,20 @@ from travel_agent.modules.access.application.errors import (
     ResourceNotFoundError,
     VersionConflictError,
 )
+from travel_agent.modules.itinerary.application.errors import (
+    ItineraryError,
+    ItineraryInvalidInputError,
+    ItineraryNotFoundError,
+    ItineraryPermissionDeniedError,
+    ItineraryVersionConflictError,
+)
+from travel_agent.modules.trips.application.errors import (
+    TripError,
+    TripInvalidInputError,
+    TripNotFoundError,
+    TripPermissionDeniedError,
+    TripVersionConflictError,
+)
 
 _STATUS_BY_ERROR: dict[type[AccessError], int] = {
     AlreadyInitializedError: 409,
@@ -48,6 +62,65 @@ async def access_error_handler(request: Request, error: AccessError) -> JSONResp
             "instance": request.url.path,
             "request_id": request_id,
             "retryable": False,
+        },
+    )
+
+
+async def trip_error_handler(request: Request, error: TripError) -> JSONResponse:
+    status_by_error: dict[type[TripError], int] = {
+        TripInvalidInputError: 422,
+        TripPermissionDeniedError: 403,
+        TripNotFoundError: 404,
+        TripVersionConflictError: 409,
+    }
+    details = {
+        "trip_permission_denied": "没有查看或修改这趟旅行的权限。",
+        "trip_not_found": "旅行不存在或已经删除。",
+        "trip_version_conflict": "旅行已经被其他人修改，请刷新后再保存。",  # noqa: RUF001
+    }
+    status_code = status_by_error.get(type(error), 400)
+    detail = str(error) or details.get(error.code, "旅行请求无法完成。")
+    return JSONResponse(
+        status_code=status_code,
+        media_type="application/problem+json",
+        content={
+            "type": f"https://travel-agent.local/problems/{error.code.replace('_', '-')}",
+            "title": "旅行请求无法完成",
+            "status": status_code,
+            "code": error.code,
+            "detail": detail,
+            "instance": request.url.path,
+            "request_id": getattr(request.state, "request_id", None),
+            "retryable": isinstance(error, TripVersionConflictError),
+        },
+    )
+
+
+async def itinerary_error_handler(request: Request, error: ItineraryError) -> JSONResponse:
+    status_by_error: dict[type[ItineraryError], int] = {
+        ItineraryInvalidInputError: 422,
+        ItineraryPermissionDeniedError: 403,
+        ItineraryNotFoundError: 404,
+        ItineraryVersionConflictError: 409,
+    }
+    details = {
+        "itinerary_not_found": "旅行尚未建立正式日程。",
+        "itinerary_permission_denied": "没有查看或编辑这份旅行计划的权限。",
+        "itinerary_version_conflict": "旅行计划已被其他人修改，请刷新后再保存。",  # noqa: RUF001
+    }
+    status_code = status_by_error.get(type(error), 400)
+    return JSONResponse(
+        status_code=status_code,
+        media_type="application/problem+json",
+        content={
+            "type": f"https://travel-agent.local/problems/{error.code.replace('_', '-')}",
+            "title": "旅行计划请求无法完成",
+            "status": status_code,
+            "code": error.code,
+            "detail": str(error) or details.get(error.code, "旅行计划请求无法完成。"),
+            "instance": request.url.path,
+            "request_id": getattr(request.state, "request_id", None),
+            "retryable": isinstance(error, ItineraryVersionConflictError),
         },
     )
 
