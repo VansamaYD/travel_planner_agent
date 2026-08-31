@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import { getSession, getSetupStatus, type SessionData } from '../../shared/api/access'
 import { Dashboard } from './Dashboard'
@@ -36,33 +36,37 @@ export function AccessExperience() {
     return () => controller.abort()
   }, [])
 
-  if (state.kind === 'loading') return <div className="loading-card">正在读取本地旅行空间…</div>
-  if (state.kind === 'error') return <div className="form-error panel">{state.message}</div>
+  if (state.kind === 'loading') return <PublicFrame><div className="loading-card">正在读取本地旅行空间…</div></PublicFrame>
+  if (state.kind === 'error') return <PublicFrame><div className="form-error panel">{state.message}</div></PublicFrame>
   if (state.kind === 'setup') {
-    return (
+    return <PublicFrame>{(
       <SetupScreen
         onInitialized={(recoveryCode, session) => setState({ kind: 'recovery', recoveryCode, session })}
       />
-    )
+    )}</PublicFrame>
   }
   if (state.kind === 'login') {
-    return <LoginScreen initialLogin={state.initialLogin} onAuthenticated={(session) => setState({ kind: 'authenticated', session })} onUseInvite={() => setState({ kind: 'invite', code: '' })} />
+    return <PublicFrame><LoginScreen initialLogin={state.initialLogin} onAuthenticated={(session) => setState({ kind: 'authenticated', session })} onUseInvite={() => setState({ kind: 'invite', code: '' })} /></PublicFrame>
   }
   if (state.kind === 'invite') {
-    return <InviteRegistrationScreen code={state.code} onRegistered={(username) => setState({ kind: 'login', initialLogin: username })} onUseExistingAccount={(code) => {
+    return <PublicFrame><InviteRegistrationScreen code={state.code} onRegistered={(username) => setState({ kind: 'login', initialLogin: username })} onUseExistingAccount={(code) => {
       if (code) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#invite=${code}`)
       setState({ kind: 'login' })
-    }} />
+    }} /></PublicFrame>
   }
   if (state.kind === 'recovery') {
-    return (
+    return <PublicFrame>{(
       <RecoveryScreen
         recoveryCode={state.recoveryCode}
         onContinue={() => setState({ kind: 'authenticated', session: state.session })}
       />
-    )
+    )}</PublicFrame>
   }
   return <Dashboard session={state.session} onLoggedOut={() => setState({ kind: 'login' })} onSessionChanged={(session) => setState({ kind: 'authenticated', session })} />
+}
+
+function PublicFrame({ children }: { children: ReactNode }) {
+  return <main className="app-shell"><header className="hero"><p className="eyebrow">SELF-HOSTED · PRIVATE BY DEFAULT</p><h1>旅行规划助手</h1><p className="hero-copy">为个人与家庭准备的自主部署旅行空间。账号、家庭和每次修改都留在你的系统中。</p></header>{children}</main>
 }
 
 function inviteCodeFromHash(): string {
