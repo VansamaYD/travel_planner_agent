@@ -147,3 +147,56 @@ async def test_trip_validation_and_csrf_are_enforced(client: httpx.AsyncClient) 
     requirements["end_date"] = "2026-10-04"
     missing_csrf = await client.post("/api/v1/trips", json=payload)
     assert missing_csrf.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_trip_with_profiled_member_can_be_created_and_saved(
+    client: httpx.AsyncClient,
+) -> None:
+    family_id, owner_membership_id, csrf = await initialize(client)
+    created_member = await client.post(
+        f"/api/v1/families/{family_id}/members",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "username": "trip-member",
+            "email": None,
+            "display_name": "同行成员",
+            "password": "member password is long enough",
+            "role": "member",
+            "profile": {
+                "nickname": "小游",
+                "member_type": "senior",
+                "birth_year": 1960,
+                "dietary_restrictions": ["少盐"],
+                "allergies": ["花生"],
+                "health_notes": "需要按时休息",
+                "mobility_notes": "避免连续爬坡",
+                "travel_preferences": ["慢节奏"],
+                "sensitive_visibility": "private",
+            },
+        },
+    )
+    assert created_member.status_code == 201, created_member.text
+    member_id = created_member.json()["data"]["id"]
+    payload = trip_payload(family_id, owner_membership_id)
+    payload["membership_ids"] = [owner_membership_id, member_id]
+    created_trip = await client.post("/api/v1/trips", json=payload, headers={"X-CSRF-Token": csrf})
+    assert created_trip.status_code == 201, created_trip.text
+    trip = created_trip.json()["data"]
+    private_member = next(
+        item for item in trip["participants"] if item["source_membership_id"] == member_id
+    )
+    assert private_member["dietary_restrictions"] == ["少盐"]
+    assert private_member["allergies"] == []
+    assert private_member["health_notes"] == ""
+    update_payload = payload.copy()
+    update_payload.pop("family_id")
+    update_payload["expected_version"] = 1
+    update_payload["title"] = "可保存的旅行新版本"
+    updated = await client.patch(
+        f"/api/v1/trips/{trip['id']}",
+        json=update_payload,
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["data"]["version"] == 2

@@ -82,7 +82,7 @@ class SqlAlchemyTripStore:
         return cast(str | None, result.scalar_one_or_none())
 
     async def participant_snapshots(
-        self, family_id: str, membership_ids: tuple[str, ...]
+        self, family_id: str, membership_ids: tuple[str, ...], actor_user_id: str
     ) -> tuple[dict[str, object], ...]:
         if not membership_ids:
             return ()
@@ -92,7 +92,7 @@ class SqlAlchemyTripStore:
         params["family_id"] = family_id
         result = await self.session.execute(
             text(
-                "SELECT fm.id, u.display_name_ciphertext, tp.profile_ciphertext "
+                "SELECT fm.id, fm.user_id, u.display_name_ciphertext, tp.profile_ciphertext "
                 "FROM family_memberships fm JOIN users u ON u.id=fm.user_id "
                 "LEFT JOIN traveler_profiles tp ON tp.membership_id=fm.id "
                 "WHERE fm.family_id=:family_id AND fm.status='active' "
@@ -101,11 +101,17 @@ class SqlAlchemyTripStore:
             params,
         )
         by_id: dict[str, dict[str, object]] = {}
-        for membership_id, display_ciphertext, profile_ciphertext in result:
+        for membership_id, member_user_id, display_ciphertext, profile_ciphertext in result:
             profile = (
-                json.loads(self._protector.decrypt(profile_ciphertext, context="traveler.profile"))
+                json.loads(
+                    self._protector.decrypt(profile_ciphertext, context="traveler_profile.payload")
+                )
                 if profile_ciphertext
                 else {}
+            )
+            sensitive_visible = (
+                profile.get("sensitive_visibility", "family") == "family"
+                or member_user_id == actor_user_id
             )
             by_id[membership_id] = {
                 "membership_id": membership_id,
@@ -116,9 +122,9 @@ class SqlAlchemyTripStore:
                 "birth_year": profile.get("birth_year"),
                 "discount_eligibilities": tuple(profile.get("discount_eligibilities", ())),
                 "dietary_restrictions": tuple(profile.get("dietary_restrictions", ())),
-                "allergies": tuple(profile.get("allergies", ())),
-                "health_notes": profile.get("health_notes", ""),
-                "mobility_notes": profile.get("mobility_notes", ""),
+                "allergies": tuple(profile.get("allergies", ())) if sensitive_visible else (),
+                "health_notes": profile.get("health_notes", "") if sensitive_visible else "",
+                "mobility_notes": profile.get("mobility_notes", "") if sensitive_visible else "",
                 "travel_preferences": tuple(profile.get("travel_preferences", ())),
             }
         return tuple(by_id[value] for value in unique_ids if value in by_id)

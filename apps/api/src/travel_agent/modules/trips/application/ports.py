@@ -20,7 +20,7 @@ class TripStore(Protocol):
     async def actor_role(self, family_id: str, user_id: str) -> str | None: ...
 
     async def participant_snapshots(
-        self, family_id: str, membership_ids: tuple[str, ...]
+        self, family_id: str, membership_ids: tuple[str, ...], actor_user_id: str
     ) -> tuple[dict[str, object], ...]: ...
 
     async def create(

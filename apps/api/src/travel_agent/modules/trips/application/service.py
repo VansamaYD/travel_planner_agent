@@ -82,7 +82,9 @@ class TripService:
             role = await store.actor_role(data.family_id, session.user.id)
             if role not in {"owner", "admin", "member"}:
                 raise TripPermissionDeniedError
-            snapshots = await store.participant_snapshots(data.family_id, data.membership_ids)
+            snapshots = await store.participant_snapshots(
+                data.family_id, data.membership_ids, session.user.id
+            )
             if len(snapshots) != len(set(data.membership_ids)):
                 raise TripInvalidInputError("部分参与者不属于当前家庭。")
             participants = tuple(self._participant(item) for item in snapshots)
@@ -142,7 +144,9 @@ class TripService:
             role = await store.actor_role(current.family_id, session.user.id)
             if current.owner_user_id != session.user.id and role not in {"owner", "admin"}:
                 raise TripPermissionDeniedError
-            snapshots = await store.participant_snapshots(current.family_id, data.membership_ids)
+            snapshots = await store.participant_snapshots(
+                current.family_id, data.membership_ids, session.user.id
+            )
             if len(snapshots) != len(set(data.membership_ids)):
                 raise TripInvalidInputError("部分参与者不属于当前家庭。")
             participants = tuple(self._participant(item) for item in snapshots)
