@@ -10,7 +10,7 @@ services:
       - path: ../.env
         required: false
     environment:
-      APP_ENV: production
+      APP_ENV: ${TRAVEL_RUNTIME_ENV:-production}
       DATABASE_URL: sqlite+aiosqlite:////data/db/travel_agent.db
       TRAVEL_DATA_ROOT: /data
     volumes:

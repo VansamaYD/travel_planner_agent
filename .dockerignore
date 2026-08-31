@@ -4,6 +4,7 @@
 .env.*
 !.env.example
 .venv
+**/.venv
 node_modules
 **/node_modules
 **/__pycache__

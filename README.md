@@ -50,6 +50,12 @@ docker compose -f deploy/compose.yaml up --build
 
 默认只暴露 Web 端口 `8080`；API 和 SQLite 不直接暴露。
 
+仅用于本机临时预览、尚未配置主密钥时，可运行：
+
+```bash
+TRAVEL_RUNTIME_ENV=development docker compose -f deploy/compose.yaml up --build -d
+```
+
 ## 安全
 
 - `.env`、运行数据、附件、导出和备份均被 Git 忽略；
