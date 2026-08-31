@@ -12,6 +12,9 @@ from travel_agent.modules.access.application.errors import (
     InvalidInputError,
     LoginRateLimitedError,
     PermissionDeniedError,
+    ResourceConflictError,
+    ResourceNotFoundError,
+    VersionConflictError,
 )
 
 _STATUS_BY_ERROR: dict[type[AccessError], int] = {
@@ -22,6 +25,9 @@ _STATUS_BY_ERROR: dict[type[AccessError], int] = {
     PermissionDeniedError: 403,
     InvalidInputError: 422,
     LoginRateLimitedError: 429,
+    ResourceNotFoundError: 404,
+    ResourceConflictError: 409,
+    VersionConflictError: 409,
 }
 
 
@@ -53,6 +59,9 @@ def _title(error: AccessError) -> str:
         "permission_denied": "没有操作权限",
         "invalid_input": "输入不符合要求",
         "login_rate_limited": "登录尝试过于频繁",
+        "resource_not_found": "资源不存在",
+        "resource_conflict": "资源已经存在",
+        "version_conflict": "资料已被其他人修改",
     }
     return titles.get(error.code, "请求无法完成")
 
@@ -64,4 +73,6 @@ def _detail(error: AccessError) -> str:
         return str(error)
     if isinstance(error, LoginRateLimitedError):
         return "请稍后再试。"
+    if isinstance(error, VersionConflictError):
+        return "请刷新成员资料并确认最新内容后再保存。"
     return _title(error)

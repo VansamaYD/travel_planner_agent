@@ -60,6 +60,21 @@ class FamilyMembershipRow(Base):
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class TravelerProfileRow(Base):
+    __tablename__ = "traveler_profiles"
+
+    membership_id: Mapped[str] = mapped_column(
+        ForeignKey("family_memberships.id", ondelete="CASCADE"), primary_key=True
+    )
+    profile_ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class SessionRow(Base):
     __tablename__ = "sessions"
 

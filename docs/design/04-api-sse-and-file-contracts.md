@@ -104,7 +104,9 @@
 GET/POST       /families
 GET/PATCH      /families/{family_id}
 GET/POST       /families/{family_id}/members
-PATCH/DELETE   /families/{family_id}/members/{membership_id}
+PATCH          /families/{family_id}/members/{membership_id}/role
+DELETE         /families/{family_id}/members/{membership_id}
+PUT            /families/{family_id}/members/{membership_id}/profile
 POST           /families/{family_id}/invites
 POST           /family-invites/{token}/accept
 GET/POST       /families/{family_id}/member-profiles
@@ -116,6 +118,11 @@ POST           /memory-suggestions/{id}/accept
 POST           /memory-suggestions/{id}/reject
 PATCH/DELETE   /users/me/memories/{id}
 ```
+
+当前轻量实现将可复用旅行档案按家庭成员关系保存，并通过
+`PUT /families/{family_id}/members/{membership_id}/profile` 携带 `expected_version`
+执行乐观锁更新。后续独立 `member-profiles` 资源用于同一账号在家庭内维护多个旅行画像时扩展，
+不得破坏当前成员档案契约。
 
 ### 5.3 Trip、需求和参与者
 

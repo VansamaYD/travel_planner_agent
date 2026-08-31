@@ -23,6 +23,18 @@ class FamilyRole(StrEnum):
     GUEST = "guest"
 
 
+class MemberType(StrEnum):
+    ADULT = "adult"
+    CHILD = "child"
+    SENIOR = "senior"
+    OTHER = "other"
+
+
+class SensitiveVisibility(StrEnum):
+    FAMILY = "family"
+    PRIVATE = "private"
+
+
 @dataclass(frozen=True, slots=True)
 class UserIdentity:
     id: str
@@ -48,3 +60,28 @@ class AuthenticatedSession:
     csrf_token: str
     expires_at: datetime
     families: tuple[FamilySummary, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TravelerProfile:
+    nickname: str
+    member_type: MemberType
+    birth_year: int | None
+    discount_eligibilities: tuple[str, ...]
+    dietary_restrictions: tuple[str, ...]
+    allergies: tuple[str, ...]
+    health_notes: str
+    mobility_notes: str
+    travel_preferences: tuple[str, ...]
+    sensitive_visibility: SensitiveVisibility
+    version: int
+
+
+@dataclass(frozen=True, slots=True)
+class FamilyMember:
+    membership_id: str
+    family_id: str
+    user: UserIdentity
+    role: FamilyRole
+    joined_at: datetime
+    profile: TravelerProfile

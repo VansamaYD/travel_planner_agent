@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { logout, type SessionData } from '../../shared/api/access'
 import { SystemStatus } from '../system-status'
+import { FamilyMembers } from './FamilyMembers'
 
 interface DashboardProps {
   session: SessionData
@@ -12,6 +13,8 @@ const roleLabels = { owner: '家庭所有者', admin: '家庭管理员', member:
 
 export function Dashboard({ session, onLoggedOut }: DashboardProps) {
   const [loggingOut, setLoggingOut] = useState(false)
+  const [activeFamilyId, setActiveFamilyId] = useState(session.families[0]?.id ?? '')
+  const activeFamily = session.families.find((family) => family.id === activeFamilyId)
 
   async function signOut() {
     setLoggingOut(true)
@@ -46,21 +49,23 @@ export function Dashboard({ session, onLoggedOut }: DashboardProps) {
         </div>
         <ul className="family-list">
           {session.families.map((family) => (
-            <li key={family.id}>
+            <li className={family.id === activeFamilyId ? 'is-active' : ''} key={family.id}>
               <div>
                 <strong>{family.name}</strong>
                 <small>{roleLabels[family.role]}</small>
               </div>
-              <span aria-label="已启用">可用</span>
+              <button className="family-switch" onClick={() => setActiveFamilyId(family.id)} type="button">{family.id === activeFamilyId ? '当前' : '切换'}</button>
             </li>
           ))}
         </ul>
       </section>
 
+      {activeFamily && <FamilyMembers family={activeFamily} session={session} />}
+
       <section className="panel next-action" aria-labelledby="next-action-title">
         <p className="section-kicker">NEXT VERTICAL SLICE</p>
         <h2 id="next-action-title">创建第一趟旅行</h2>
-        <p className="muted">下一步将接入旅行草稿、成员选择、版本历史与结构化需求。</p>
+        <p className="muted">成员与偏好档案已经就绪，下一步接入旅行草稿、参与者快照和版本历史。</p>
         <button className="primary-button" disabled type="button">即将开放</button>
       </section>
 

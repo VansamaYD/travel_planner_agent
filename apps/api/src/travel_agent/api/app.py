@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from travel_agent.api.http.middleware import RequestIdMiddleware
 from travel_agent.api.http.problems import access_error_handler
 from travel_agent.api.http.routers.access import router as access_router
+from travel_agent.api.http.routers.family_members import router as family_members_router
 from travel_agent.api.http.routers.health import router as health_router
 from travel_agent.bootstrap.container import Container, build_container
 from travel_agent.bootstrap.settings import Settings
@@ -38,6 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(AccessError, access_error_handler)  # type: ignore[arg-type]
     app.include_router(health_router)
     app.include_router(access_router)
+    app.include_router(family_members_router)
     return app
 
 

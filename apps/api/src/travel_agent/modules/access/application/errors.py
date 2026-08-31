@@ -28,3 +28,15 @@ class PermissionDeniedError(AccessError):
 
 class LoginRateLimitedError(AccessError):
     code = "login_rate_limited"
+
+
+class ResourceNotFoundError(AccessError):
+    code = "resource_not_found"
+
+
+class ResourceConflictError(AccessError):
+    code = "resource_conflict"
+
+
+class VersionConflictError(AccessError):
+    code = "version_conflict"

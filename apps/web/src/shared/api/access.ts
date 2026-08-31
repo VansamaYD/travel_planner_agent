@@ -17,6 +17,40 @@ export interface SessionData {
   families: FamilySummary[]
 }
 
+export interface TravelerProfile {
+  nickname: string
+  member_type: 'adult' | 'child' | 'senior' | 'other'
+  birth_year: number | null
+  discount_eligibilities: string[]
+  dietary_restrictions: string[]
+  allergies: string[]
+  health_notes: string
+  mobility_notes: string
+  travel_preferences: string[]
+  sensitive_visibility: 'family' | 'private'
+  version: number
+}
+
+export interface FamilyMember {
+  membership_id: string
+  user_id: string
+  username: string
+  email: string | null
+  display_name: string
+  role: FamilySummary['role']
+  joined_at: string
+  profile: TravelerProfile
+}
+
+export interface CreateMemberInput {
+  username: string
+  email: string
+  display_name: string
+  password: string
+  role: 'admin' | 'member' | 'guest'
+  profile: Omit<TravelerProfile, 'version'>
+}
+
 interface Envelope<T> {
   data: T
   meta: { request_id: string }
@@ -71,6 +105,64 @@ export async function getSession(signal?: AbortSignal): Promise<SessionData | nu
 export async function logout(csrfToken: string): Promise<void> {
   const response = await fetch('/api/v1/auth/logout', {
     method: 'POST',
+    headers: { 'X-CSRF-Token': csrfToken },
+  })
+  if (!response.ok) await throwProblem(response)
+}
+
+export async function listFamilyMembers(familyId: string, signal?: AbortSignal): Promise<FamilyMember[]> {
+  const response = await fetch(`/api/v1/families/${familyId}/members`, { signal })
+  return (await parse<Envelope<FamilyMember[]>>(response)).data
+}
+
+export async function createFamilyMember(
+  familyId: string,
+  input: CreateMemberInput,
+  csrfToken: string,
+): Promise<string> {
+  const response = await fetch(`/api/v1/families/${familyId}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+    body: JSON.stringify({ ...input, email: input.email || null }),
+  })
+  return (await parse<Envelope<{ id: string }>>(response)).data.id
+}
+
+export async function updateTravelerProfile(
+  familyId: string,
+  membershipId: string,
+  profile: TravelerProfile,
+  csrfToken: string,
+): Promise<TravelerProfile> {
+  const response = await fetch(`/api/v1/families/${familyId}/members/${membershipId}/profile`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+    body: JSON.stringify({ ...profile, expected_version: profile.version }),
+  })
+  return (await parse<Envelope<TravelerProfile>>(response)).data
+}
+
+export async function changeFamilyRole(
+  familyId: string,
+  membershipId: string,
+  role: 'admin' | 'member' | 'guest',
+  csrfToken: string,
+): Promise<void> {
+  const response = await fetch(`/api/v1/families/${familyId}/members/${membershipId}/role`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+    body: JSON.stringify({ role }),
+  })
+  if (!response.ok) await throwProblem(response)
+}
+
+export async function removeFamilyMember(
+  familyId: string,
+  membershipId: string,
+  csrfToken: string,
+): Promise<void> {
+  const response = await fetch(`/api/v1/families/${familyId}/members/${membershipId}`, {
+    method: 'DELETE',
     headers: { 'X-CSRF-Token': csrfToken },
   })
   if (!response.ok) await throwProblem(response)
