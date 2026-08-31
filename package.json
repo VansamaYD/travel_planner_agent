@@ -1,0 +1,17 @@
+{
+  "name": "travel-planner-agent",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "web:dev": "npm run dev --workspace @travel-planner/web",
+    "web:build": "npm run build --workspace @travel-planner/web",
+    "web:test": "npm run test --workspace @travel-planner/web",
+    "web:lint": "npm run lint --workspace @travel-planner/web"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

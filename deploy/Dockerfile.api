@@ -1,0 +1,29 @@
+FROM ghcr.io/astral-sh/uv:0.9.22 AS uv
+
+FROM python:3.13-slim-bookworm AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
+
+WORKDIR /app
+
+COPY --from=uv /uv /uvx /bin/
+COPY apps/api/pyproject.toml apps/api/uv.lock /app/apps/api/
+RUN uv sync --project /app/apps/api --frozen --no-dev --no-install-project
+
+COPY apps/api /app/apps/api
+COPY deploy/api-entrypoint.sh /app/deploy/api-entrypoint.sh
+RUN uv sync --project /app/apps/api --frozen --no-dev \
+    && chmod 0555 /app/deploy/api-entrypoint.sh \
+    && mkdir -p /data/db /data/files /data/exports /data/cache /data/tmp \
+    && useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin travel \
+    && chown -R travel:travel /data
+
+USER 10001
+WORKDIR /app
+
+EXPOSE 8000
+ENTRYPOINT ["/app/deploy/api-entrypoint.sh"]
