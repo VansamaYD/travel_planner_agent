@@ -940,6 +940,142 @@ h2 {
   line-height: 1.6;
 }
 
+.ai-planner {
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid rgb(37 86 65 / 18%);
+  border-radius: 15px;
+  background: linear-gradient(145deg, #e7f0e3, #f8faf5);
+}
+
+.ai-planner-heading,
+.proposal-preview > header,
+.ai-planner-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ai-planner-heading strong,
+.ai-planner-heading span,
+.proposal-preview header strong,
+.proposal-preview header small {
+  display: block;
+}
+
+.ai-planner-heading > div > span,
+.proposal-preview header small {
+  margin-top: 3px;
+  color: #64756c;
+  font-size: 0.7rem;
+}
+
+.ai-status {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #28543f;
+  background: #d3e5d0;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.ai-planner label {
+  display: grid;
+  gap: 6px;
+}
+
+.ai-planner label > span {
+  color: #35483e;
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.ai-planner textarea,
+.ai-planner select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid rgb(18 55 42 / 18%);
+  border-radius: 10px;
+  color: inherit;
+  background: #fff;
+}
+
+.ai-planner-controls {
+  align-items: stretch;
+}
+
+.ai-planner-controls select {
+  width: auto;
+  min-width: 130px;
+}
+
+.ai-planner-controls .primary-button {
+  flex: 1;
+}
+
+.ai-disclaimer {
+  margin: 0;
+  color: #64756c;
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+
+.proposal-preview {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(31 59 45 / 7%);
+}
+
+.proposal-preview > p {
+  margin: 0;
+  color: #405248;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.proposal-preview .proposal-warning {
+  color: #725824;
+}
+
+.proposal-days {
+  display: grid;
+  gap: 7px;
+}
+
+.proposal-days div {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: #edf2e9;
+  font-size: 0.75rem;
+}
+
+.proposal-days span {
+  color: #64756c;
+}
+
+.proposal-apply {
+  min-height: 44px;
+  border: 0;
+  border-radius: 11px;
+  color: #fff;
+  background: #315945;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.proposal-apply:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .day-list {
   display: grid;
   gap: 12px;

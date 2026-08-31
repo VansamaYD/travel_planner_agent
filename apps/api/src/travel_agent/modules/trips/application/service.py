@@ -12,10 +12,11 @@ from travel_agent.modules.trips.application.errors import (
     TripPermissionDeniedError,
     TripVersionConflictError,
 )
-from travel_agent.modules.trips.application.ports import Clock, TripStoreFactory
+from travel_agent.modules.trips.application.ports import Clock, TripStore, TripStoreFactory
 from travel_agent.modules.trips.domain.models import (
     TripDraft,
     TripInputMode,
+    TripListItem,
     TripParticipant,
     TripRequirements,
     TripStatus,
@@ -103,13 +104,17 @@ class TripService:
             await store.commit()
             return draft
 
-    async def list(self, session: AuthenticatedSession, family_id: str | None):
+    async def list(
+        self, session: AuthenticatedSession, family_id: str | None
+    ) -> tuple[TripListItem, ...]:
         async with self._store_factory() as store:
             if family_id and await store.actor_role(family_id, session.user.id) is None:
                 raise TripPermissionDeniedError
             return await store.list_visible(session.user.id, family_id)
 
-    async def deleted(self, session: AuthenticatedSession, family_id: str | None):
+    async def deleted(
+        self, session: AuthenticatedSession, family_id: str | None
+    ) -> tuple[TripListItem, ...]:
         async with self._store_factory() as store:
             if family_id:
                 role = await store.actor_role(family_id, session.user.id)
@@ -240,7 +245,7 @@ class TripService:
             return draft
 
     @staticmethod
-    async def _load_visible(store, user_id: str, trip_id: str) -> TripDraft:
+    async def _load_visible(store: TripStore, user_id: str, trip_id: str) -> TripDraft:
         draft = await store.get(trip_id)
         if draft is None:
             raise TripNotFoundError

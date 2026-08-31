@@ -11,7 +11,11 @@ from travel_agent.modules.itinerary.application.errors import (
     ItineraryPermissionDeniedError,
     ItineraryVersionConflictError,
 )
-from travel_agent.modules.itinerary.application.ports import Clock, ItineraryStoreFactory
+from travel_agent.modules.itinerary.application.ports import (
+    Clock,
+    ItineraryStore,
+    ItineraryStoreFactory,
+)
 from travel_agent.modules.itinerary.domain.models import (
     ItineraryDay,
     ItineraryItem,
@@ -169,7 +173,7 @@ class ItineraryService:
             return await store.versions(trip_id)
 
     async def _authorize(
-        self, store, user_id: str, trip_id: str, *, write: bool
+        self, store: ItineraryStore, user_id: str, trip_id: str, *, write: bool
     ) -> dict[str, object]:
         context = await store.trip_context(trip_id)
         if context is None:

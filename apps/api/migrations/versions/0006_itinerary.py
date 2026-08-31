@@ -24,7 +24,9 @@ def upgrade() -> None:
     op.create_table(
         "itinerary_versions",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("trip_id", sa.String(36), sa.ForeignKey("trips.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "trip_id", sa.String(36), sa.ForeignKey("trips.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("version_no", sa.Integer(), nullable=False),
         sa.Column("parent_version_id", sa.String(36), nullable=True),
         sa.Column("change_type", sa.String(40), nullable=False),
@@ -32,7 +34,12 @@ def upgrade() -> None:
         sa.Column("snapshot_ciphertext", sa.LargeBinary(), nullable=False),
         sa.Column("snapshot_hash", sa.String(64), nullable=False),
         sa.Column("summary_ciphertext", sa.LargeBinary(), nullable=False),
-        sa.Column("created_by_user_id", sa.String(36), sa.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False),
+        sa.Column(
+            "created_by_user_id",
+            sa.String(36),
+            sa.ForeignKey("users.id", ondelete="RESTRICT"),
+            nullable=False,
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint("trip_id", "version_no", name="uq_itinerary_version"),
     )
@@ -41,19 +48,36 @@ def upgrade() -> None:
     op.create_table(
         "itinerary_days",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("itinerary_version_id", sa.String(36), sa.ForeignKey("itinerary_versions.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "itinerary_version_id",
+            sa.String(36),
+            sa.ForeignKey("itinerary_versions.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("local_date", sa.Date(), nullable=False),
         sa.Column("city_ciphertext", sa.LargeBinary(), nullable=False),
         sa.Column("summary_ciphertext", sa.LargeBinary(), nullable=False),
         sa.Column("sort_order", sa.Integer(), nullable=False),
     )
-    op.create_index("ix_itinerary_days_itinerary_version_id", "itinerary_days", ["itinerary_version_id"])
+    op.create_index(
+        "ix_itinerary_days_itinerary_version_id", "itinerary_days", ["itinerary_version_id"]
+    )
     op.create_index("ix_itinerary_days_local_date", "itinerary_days", ["local_date"])
     op.create_table(
         "itinerary_items",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("itinerary_version_id", sa.String(36), sa.ForeignKey("itinerary_versions.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("itinerary_day_id", sa.String(36), sa.ForeignKey("itinerary_days.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "itinerary_version_id",
+            sa.String(36),
+            sa.ForeignKey("itinerary_versions.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "itinerary_day_id",
+            sa.String(36),
+            sa.ForeignKey("itinerary_days.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("logical_id", sa.String(36), nullable=False),
         sa.Column("item_type", sa.String(32), nullable=False),
         sa.Column("title_ciphertext", sa.LargeBinary(), nullable=False),
@@ -69,12 +93,23 @@ def upgrade() -> None:
         sa.Column("travel_cost_cents_to_next", sa.Integer(), nullable=True),
         sa.Column("sort_order", sa.Integer(), nullable=False),
     )
-    for column in ("itinerary_version_id", "itinerary_day_id", "logical_id", "item_type", "execution_status"):
+    for column in (
+        "itinerary_version_id",
+        "itinerary_day_id",
+        "logical_id",
+        "item_type",
+        "execution_status",
+    ):
         op.create_index(f"ix_itinerary_items_{column}", "itinerary_items", [column])
     op.create_table(
         "itinerary_legs",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("itinerary_version_id", sa.String(36), sa.ForeignKey("itinerary_versions.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "itinerary_version_id",
+            sa.String(36),
+            sa.ForeignKey("itinerary_versions.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("from_item_logical_id", sa.String(36), nullable=False),
         sa.Column("to_item_logical_id", sa.String(36), nullable=False),
         sa.Column("mode", sa.String(32), nullable=False),

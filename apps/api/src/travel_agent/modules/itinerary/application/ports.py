@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from types import TracebackType
 from typing import Protocol, Self
 
@@ -30,4 +31,4 @@ class ItineraryStoreFactory(Protocol):
 
 
 class Clock(Protocol):
-    def now(self): ...
+    def now(self) -> datetime: ...

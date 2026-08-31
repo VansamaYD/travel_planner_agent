@@ -11,6 +11,7 @@ dependencies = [
   "argon2-cffi==25.1.0",
   "cryptography>=50,<51",
   "fastapi==0.141.1",
+  "httpx>=0.28,<1",
   "pydantic-settings>=2.10,<3",
   "sqlalchemy[asyncio]>=2.0.43,<2.1",
   "structlog>=25.4,<26",
@@ -19,7 +20,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "httpx>=0.28,<1",
   "import-linter>=2.3,<3",
   "mypy>=1.17,<2",
   "pytest>=8.4,<9",
@@ -72,6 +72,7 @@ source_modules = [
   "travel_agent.modules.operations.application",
   "travel_agent.modules.trips.application",
   "travel_agent.modules.itinerary.application",
+  "travel_agent.modules.planning.application",
 ]
 forbidden_modules = [
   "fastapi",

@@ -54,6 +54,17 @@ class Settings(BaseSettings):
         default="travel_session",
         validation_alias=AliasChoices("SESSION_COOKIE_NAME", "TRAVEL_SESSION_COOKIE_NAME"),
     )
+    deepseek_api_key: SecretStr | None = Field(default=None, validation_alias="DEEPSEEK_API_KEY")
+    deepseek_base_url: str = Field(
+        default="https://api.deepseek.com", validation_alias="DEEPSEEK_BASE_URL"
+    )
+    deepseek_model: str = Field(default="", validation_alias="DEEPSEEK_MODEL")
+    model_test_timeout_seconds: int = Field(
+        default=120, ge=10, le=300, validation_alias="MODEL_TEST_TIMEOUT_SECONDS"
+    )
+    model_planning_max_output_tokens: int = Field(
+        default=8192, ge=512, le=32768, validation_alias="MODEL_PLANNING_MAX_OUTPUT_TOKENS"
+    )
 
     @field_validator("log_level")
     @classmethod

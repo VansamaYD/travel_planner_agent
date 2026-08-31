@@ -24,6 +24,15 @@ from travel_agent.modules.itinerary.application.errors import (
     ItineraryPermissionDeniedError,
     ItineraryVersionConflictError,
 )
+from travel_agent.modules.planning.application.errors import (
+    PlanningError,
+    PlanningInvalidInputError,
+    PlanningNotFoundError,
+    PlanningPermissionDeniedError,
+    PlanningProviderError,
+    PlanningProviderUnavailableError,
+    PlanningVersionConflictError,
+)
 from travel_agent.modules.trips.application.errors import (
     TripError,
     TripInvalidInputError,
@@ -121,6 +130,32 @@ async def itinerary_error_handler(request: Request, error: ItineraryError) -> JS
             "instance": request.url.path,
             "request_id": getattr(request.state, "request_id", None),
             "retryable": isinstance(error, ItineraryVersionConflictError),
+        },
+    )
+
+
+async def planning_error_handler(request: Request, error: PlanningError) -> JSONResponse:
+    status_by_error: dict[type[PlanningError], int] = {
+        PlanningInvalidInputError: 422,
+        PlanningPermissionDeniedError: 403,
+        PlanningNotFoundError: 404,
+        PlanningProviderUnavailableError: 503,
+        PlanningProviderError: 502,
+        PlanningVersionConflictError: 409,
+    }
+    status_code = status_by_error.get(type(error), 400)
+    return JSONResponse(
+        status_code=status_code,
+        media_type="application/problem+json",
+        content={
+            "type": f"https://travel-agent.local/problems/{error.code.replace('_', '-')}",
+            "title": "智能规划请求无法完成",
+            "status": status_code,
+            "code": error.code,
+            "detail": str(error) or "智能规划请求无法完成。",
+            "instance": request.url.path,
+            "request_id": getattr(request.state, "request_id", None),
+            "retryable": isinstance(error, (PlanningProviderError, PlanningVersionConflictError)),
         },
     )
 

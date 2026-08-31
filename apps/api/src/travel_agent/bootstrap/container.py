@@ -27,6 +27,13 @@ from travel_agent.modules.operations.infrastructure.health_checks import (
     DirectoryReadinessCheck,
     MasterKeyReadinessCheck,
 )
+from travel_agent.modules.planning.application.ports import PlanningStore
+from travel_agent.modules.planning.application.service import PlanningService
+from travel_agent.modules.planning.infrastructure.provider import (
+    DeepSeekProvider,
+    DisabledModelProvider,
+)
+from travel_agent.modules.planning.infrastructure.store import SqlAlchemyPlanningStore
 from travel_agent.modules.trips.application.ports import TripStore
 from travel_agent.modules.trips.application.service import TripService
 from travel_agent.modules.trips.infrastructure.store import SqlAlchemyTripStore
@@ -43,6 +50,7 @@ class Container:
     family_invite_service: FamilyInviteService
     trip_service: TripService
     itinerary_service: ItineraryService
+    planning_service: PlanningService
     login_rate_limiter: LoginRateLimiter
     invite_registration_rate_limiter: LoginRateLimiter
 
@@ -74,6 +82,9 @@ def build_container(settings: Settings | None = None) -> Container:
     def itinerary_store_factory() -> ItineraryStore:
         return SqlAlchemyItineraryStore(database.session_factory, protector)
 
+    def planning_store_factory() -> PlanningStore:
+        return SqlAlchemyPlanningStore(database.session_factory, protector)
+
     password_hasher = Argon2idHasher()
     token_issuer = SecureTokenIssuer()
     access_service = AccessService(
@@ -82,6 +93,18 @@ def build_container(settings: Settings | None = None) -> Container:
         token_issuer=token_issuer,
         clock=SystemClock(),
         session_lifetime=timedelta(days=resolved_settings.session_lifetime_days),
+    )
+    deepseek_key = resolved_settings.deepseek_api_key
+    model_provider = (
+        DeepSeekProvider(
+            deepseek_key.get_secret_value(),
+            resolved_settings.deepseek_base_url,
+            resolved_settings.deepseek_model,
+            resolved_settings.model_test_timeout_seconds,
+            resolved_settings.model_planning_max_output_tokens,
+        )
+        if deepseek_key is not None and resolved_settings.deepseek_model
+        else DisabledModelProvider()
     )
     health_service = HealthService(
         checks=(
@@ -109,6 +132,13 @@ def build_container(settings: Settings | None = None) -> Container:
         trip_service=TripService(store_factory=trip_store_factory, clock=SystemClock()),
         itinerary_service=ItineraryService(
             store_factory=itinerary_store_factory, clock=SystemClock()
+        ),
+        planning_service=PlanningService(
+            store_factory=planning_store_factory,
+            provider=model_provider,
+            clock=SystemClock(),
+            provider_name="deepseek",
+            model_name=resolved_settings.deepseek_model,
         ),
         login_rate_limiter=LoginRateLimiter(),
         invite_registration_rate_limiter=LoginRateLimiter(attempts=3, window_seconds=600),

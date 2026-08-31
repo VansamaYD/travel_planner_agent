@@ -20,8 +20,18 @@ def upgrade() -> None:
     op.create_table(
         "trips",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("family_id", sa.String(36), sa.ForeignKey("families.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("owner_user_id", sa.String(36), sa.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False),
+        sa.Column(
+            "family_id",
+            sa.String(36),
+            sa.ForeignKey("families.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "owner_user_id",
+            sa.String(36),
+            sa.ForeignKey("users.id", ondelete="RESTRICT"),
+            nullable=False,
+        ),
         sa.Column("title_ciphertext", sa.LargeBinary(), nullable=False),
         sa.Column("status", sa.String(24), nullable=False),
         sa.Column("visibility", sa.String(24), nullable=False),
@@ -33,36 +43,59 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
-    for column in ("family_id", "owner_user_id", "status", "visibility", "deleted_at", "updated_at"):
+    for column in (
+        "family_id",
+        "owner_user_id",
+        "status",
+        "visibility",
+        "deleted_at",
+        "updated_at",
+    ):
         op.create_index(f"ix_trips_{column}", "trips", [column])
     op.create_table(
         "trip_requirements",
-        sa.Column("trip_id", sa.String(36), sa.ForeignKey("trips.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column(
+            "trip_id",
+            sa.String(36),
+            sa.ForeignKey("trips.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
         sa.Column("requirement_ciphertext", sa.LargeBinary(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_table(
         "trip_participants",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("trip_id", sa.String(36), sa.ForeignKey("trips.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "trip_id", sa.String(36), sa.ForeignKey("trips.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("source_membership_id", sa.String(36), nullable=True),
         sa.Column("snapshot_ciphertext", sa.LargeBinary(), nullable=False),
         sa.Column("is_temporary", sa.Boolean(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_trip_participants_trip_id", "trip_participants", ["trip_id"])
-    op.create_index("ix_trip_participants_source_membership_id", "trip_participants", ["source_membership_id"])
+    op.create_index(
+        "ix_trip_participants_source_membership_id", "trip_participants", ["source_membership_id"]
+    )
     op.create_table(
         "trip_versions",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("trip_id", sa.String(36), sa.ForeignKey("trips.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "trip_id", sa.String(36), sa.ForeignKey("trips.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("version_no", sa.Integer(), nullable=False),
         sa.Column("parent_version_id", sa.String(36), nullable=True),
         sa.Column("change_type", sa.String(40), nullable=False),
         sa.Column("snapshot_ciphertext", sa.LargeBinary(), nullable=False),
         sa.Column("snapshot_hash", sa.String(64), nullable=False),
         sa.Column("summary_ciphertext", sa.LargeBinary(), nullable=False),
-        sa.Column("created_by_user_id", sa.String(36), sa.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False),
+        sa.Column(
+            "created_by_user_id",
+            sa.String(36),
+            sa.ForeignKey("users.id", ondelete="RESTRICT"),
+            nullable=False,
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint("trip_id", "version_no", name="uq_trip_version"),
     )

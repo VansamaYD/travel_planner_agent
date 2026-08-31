@@ -3,6 +3,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from fastapi import FastAPI
 
 from travel_agent.api.app import create_app
 from travel_agent.bootstrap.settings import Settings
@@ -21,8 +22,12 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-async def client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
-    app = create_app(settings)
+def app(settings: Settings) -> FastAPI:
+    return create_app(settings)
+
+
+@pytest.fixture
+async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
     container = app.state.container
     async with container.database.engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)

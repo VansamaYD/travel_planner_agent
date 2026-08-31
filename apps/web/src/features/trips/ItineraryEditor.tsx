@@ -8,6 +8,13 @@ import {
   type ItineraryItem,
   type ItineraryPlan,
 } from '../../shared/api/itinerary'
+import {
+  applyPlanningProposal,
+  listPlanningProposals,
+  startPlanning,
+  type PlanningProposal,
+  type PlanningRun,
+} from '../../shared/api/planning'
 
 interface Props { tripId: string; csrfToken: string }
 
@@ -22,12 +29,20 @@ export function ItineraryEditor({ tripId, csrfToken }: Props) {
   const [days, setDays] = useState<ItineraryDay[]>([])
   const [editing, setEditing] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [planning, setPlanning] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [profile, setProfile] = useState<PlanningRun['profile']>('PLAN_STANDARD')
+  const [instruction, setInstruction] = useState('')
+  const [proposal, setProposal] = useState<PlanningProposal | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
     const controller = new AbortController(); setLoading(true); setError('')
-    getItinerary(tripId, controller.signal)
-      .then((value) => { setPlan(value); setDays(value?.days ?? []) })
+    Promise.all([getItinerary(tripId, controller.signal), listPlanningProposals(tripId, controller.signal)])
+      .then(([value, proposals]) => {
+        setPlan(value); setDays(value?.days ?? [])
+        setProposal(proposals.find((item) => item.status === 'pending') ?? proposals[0] ?? null)
+      })
       .catch((reason: Error) => { if (!controller.signal.aborted) setError(reason.message) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
@@ -46,6 +61,30 @@ export function ItineraryEditor({ tripId, csrfToken }: Props) {
     try { const value = await updateItinerary(tripId, plan.version, days, csrfToken); setPlan(value); setDays(value.days); setEditing(false) }
     catch (reason) { setError(reason instanceof Error ? reason.message : '保存失败') }
     finally { setLoading(false) }
+  }
+
+  async function generateProposal() {
+    setPlanning(true); setError('')
+    try {
+      const result = await startPlanning(tripId, profile, instruction.trim(), csrfToken)
+      if (result.run.status === 'failed') {
+        setError(result.run.error || '智能规划未能完成')
+        return
+      }
+      setProposal(result.proposal)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '智能规划失败') }
+    finally { setPlanning(false) }
+  }
+
+  async function applyProposal() {
+    if (!proposal) return
+    setApplying(true); setError('')
+    try {
+      const applied = await applyPlanningProposal(proposal.id, csrfToken)
+      const nextPlan = await getItinerary(tripId)
+      setProposal(applied); setPlan(nextPlan); setDays(nextPlan?.days ?? [])
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '应用候选方案失败') }
+    finally { setApplying(false) }
   }
 
   function updateDay(index: number, patch: Partial<ItineraryDay>) {
@@ -67,6 +106,27 @@ export function ItineraryEditor({ tripId, csrfToken }: Props) {
         {plan && <small>v{plan.version} · 预计 ¥{(plan.estimated_total_cost_cents / 100).toLocaleString()}</small>}
       </div>
       {error && <p className="form-error">{error}</p>}
+      <div className="ai-planner">
+        <div className="ai-planner-heading">
+          <div><strong>AI 候选方案</strong><span>生成后仅预览，不会自动改动正式日程</span></div>
+          <span className="ai-status">{planning ? '规划中' : proposal?.status === 'pending' ? '待确认' : proposal?.status === 'applied' ? '已应用' : '尚未生成'}</span>
+        </div>
+        <label><span>本次调整说明（可选）</span><textarea maxLength={2000} placeholder="例如：每天 9 点后出发，不要连续安排两个园林" rows={3} value={instruction} onChange={(event) => setInstruction(event.target.value)} /></label>
+        <div className="ai-planner-controls">
+          <select aria-label="规划深度" value={profile} onChange={(event) => setProfile(event.target.value as PlanningRun['profile'])}><option value="PLAN_STANDARD">标准规划</option><option value="PLAN_DEEP">深度规划（更高用量）</option></select>
+          <button className="primary-button" disabled={planning || applying} onClick={() => void generateProposal()} type="button">{planning ? '模型正在设计日程…' : proposal?.status === 'pending' ? '重新生成候选方案' : '生成候选方案'}</button>
+        </div>
+        <p className="ai-disclaimer">当前节点只进行模型规划；价格、营业时间、票务和地图路线仍需后续联网节点核验。</p>
+        {proposal && (
+          <article className="proposal-preview">
+            <header><div><strong>{proposal.summary}</strong><small>{new Date(proposal.created_at).toLocaleString('zh-CN')} · 输入 {proposal.input_tokens.toLocaleString()} / 输出 {proposal.output_tokens.toLocaleString()} tokens · 估算 ${Math.max(proposal.estimated_cost_microusd / 1_000_000, 0).toFixed(4)}</small></div><span>{proposal.days.length} 天</span></header>
+            {proposal.rationale && <p>{proposal.rationale}</p>}
+            {proposal.warnings.map((warning) => <p className="proposal-warning" key={warning}>{warning}</p>)}
+            <div className="proposal-days">{proposal.days.map((day) => <div key={day.local_date}><strong>{day.local_date} · {day.city}</strong><span>{day.summary || '当天安排'} · {day.items.length} 项活动</span></div>)}</div>
+            {proposal.status === 'pending' && <button className="proposal-apply" disabled={applying} onClick={() => void applyProposal()} type="button">{applying ? '正在创建日程新版本…' : '确认并应用到正式日程'}</button>}
+          </article>
+        )}
+      </div>
       {!plan ? (
         <div className="itinerary-empty"><p>根据旅行日期建立按天结构，再逐项添加景点、餐厅、住宿、交通和费用。</p><button className="primary-button" disabled={loading} onClick={() => void initialize()} type="button">建立按天计划</button></div>
       ) : (
