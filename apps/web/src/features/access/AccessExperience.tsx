@@ -3,13 +3,15 @@ import { useEffect, useState } from 'react'
 import { getSession, getSetupStatus, type SessionData } from '../../shared/api/access'
 import { Dashboard } from './Dashboard'
 import { LoginScreen } from './LoginScreen'
+import { InviteRegistrationScreen } from './InviteRegistrationScreen'
 import { RecoveryScreen } from './RecoveryScreen'
 import { SetupScreen } from './SetupScreen'
 
 type AccessState =
   | { kind: 'loading' }
   | { kind: 'setup' }
-  | { kind: 'login' }
+  | { kind: 'login'; initialLogin?: string }
+  | { kind: 'invite'; code: string }
   | { kind: 'recovery'; recoveryCode: string; session: SessionData }
   | { kind: 'authenticated'; session: SessionData }
   | { kind: 'error'; message: string }
@@ -23,7 +25,8 @@ export function AccessExperience() {
       .then(async (initialized) => {
         if (!initialized) return setState({ kind: 'setup' })
         const session = await getSession(controller.signal)
-        setState(session ? { kind: 'authenticated', session } : { kind: 'login' })
+        const inviteCode = inviteCodeFromHash()
+        setState(session ? { kind: 'authenticated', session } : inviteCode ? { kind: 'invite', code: inviteCode } : { kind: 'login' })
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
@@ -43,7 +46,13 @@ export function AccessExperience() {
     )
   }
   if (state.kind === 'login') {
-    return <LoginScreen onAuthenticated={(session) => setState({ kind: 'authenticated', session })} />
+    return <LoginScreen initialLogin={state.initialLogin} onAuthenticated={(session) => setState({ kind: 'authenticated', session })} onUseInvite={() => setState({ kind: 'invite', code: '' })} />
+  }
+  if (state.kind === 'invite') {
+    return <InviteRegistrationScreen code={state.code} onRegistered={(username) => setState({ kind: 'login', initialLogin: username })} onUseExistingAccount={(code) => {
+      if (code) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#invite=${code}`)
+      setState({ kind: 'login' })
+    }} />
   }
   if (state.kind === 'recovery') {
     return (
@@ -53,5 +62,10 @@ export function AccessExperience() {
       />
     )
   }
-  return <Dashboard session={state.session} onLoggedOut={() => setState({ kind: 'login' })} />
+  return <Dashboard session={state.session} onLoggedOut={() => setState({ kind: 'login' })} onSessionChanged={(session) => setState({ kind: 'authenticated', session })} />
+}
+
+function inviteCodeFromHash(): string {
+  const match = window.location.hash.match(/^#invite=([A-Z2-7-]{20,64})$/i)
+  return match?.[1] ?? ''
 }

@@ -4,8 +4,10 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from travel_agent.bootstrap.settings import Settings, get_settings
+from travel_agent.modules.access.application.invite_service import FamilyInviteService
 from travel_agent.modules.access.application.member_service import FamilyMemberService
 from travel_agent.modules.access.application.service import AccessService
+from travel_agent.modules.access.infrastructure.invite_store import SqlAlchemyInviteStore
 from travel_agent.modules.access.infrastructure.member_store import SqlAlchemyMemberStore
 from travel_agent.modules.access.infrastructure.rate_limit import LoginRateLimiter
 from travel_agent.modules.access.infrastructure.security import (
@@ -32,7 +34,9 @@ class Container:
     health_service: HealthService
     access_service: AccessService
     family_member_service: FamilyMemberService
+    family_invite_service: FamilyInviteService
     login_rate_limiter: LoginRateLimiter
+    invite_registration_rate_limiter: LoginRateLimiter
 
     async def startup(self) -> None:
         self.settings.ensure_runtime_directories()
@@ -53,11 +57,15 @@ def build_container(settings: Settings | None = None) -> Container:
     def member_store_factory() -> SqlAlchemyMemberStore:
         return SqlAlchemyMemberStore(database.session_factory, protector)
 
+    def invite_store_factory() -> SqlAlchemyInviteStore:
+        return SqlAlchemyInviteStore(database.session_factory, protector)
+
     password_hasher = Argon2idHasher()
+    token_issuer = SecureTokenIssuer()
     access_service = AccessService(
         store_factory=store_factory,
         password_hasher=password_hasher,
-        token_issuer=SecureTokenIssuer(),
+        token_issuer=token_issuer,
         clock=SystemClock(),
         session_lifetime=timedelta(days=resolved_settings.session_lifetime_days),
     )
@@ -78,5 +86,12 @@ def build_container(settings: Settings | None = None) -> Container:
             password_hasher=password_hasher,
             clock=SystemClock(),
         ),
+        family_invite_service=FamilyInviteService(
+            store_factory=invite_store_factory,
+            token_issuer=token_issuer,
+            password_hasher=password_hasher,
+            clock=SystemClock(),
+        ),
         login_rate_limiter=LoginRateLimiter(),
+        invite_registration_rate_limiter=LoginRateLimiter(attempts=3, window_seconds=600),
     )

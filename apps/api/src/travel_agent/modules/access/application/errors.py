@@ -40,3 +40,7 @@ class ResourceConflictError(AccessError):
 
 class VersionConflictError(AccessError):
     code = "version_conflict"
+
+
+class InvalidInviteError(AccessError):
+    code = "invalid_invite"

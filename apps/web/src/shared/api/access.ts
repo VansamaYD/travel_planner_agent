@@ -51,6 +51,25 @@ export interface CreateMemberInput {
   profile: Omit<TravelerProfile, 'version'>
 }
 
+export interface FamilyInvite {
+  id: string
+  family_id: string
+  role: 'admin' | 'member' | 'guest'
+  status: 'active' | 'accepted' | 'revoked' | 'expired'
+  created_by_user_id: string
+  created_at: string
+  expires_at: string
+  accepted_by_user_id: string | null
+}
+
+export interface InviteRegistrationInput {
+  code: string
+  username: string
+  email: string
+  display_name: string
+  password: string
+}
+
 interface Envelope<T> {
   data: T
   meta: { request_id: string }
@@ -166,6 +185,58 @@ export async function removeFamilyMember(
     headers: { 'X-CSRF-Token': csrfToken },
   })
   if (!response.ok) await throwProblem(response)
+}
+
+export async function listFamilyInvites(
+  familyId: string,
+  signal?: AbortSignal,
+): Promise<FamilyInvite[]> {
+  const response = await fetch(`/api/v1/families/${familyId}/invites`, { signal })
+  return (await parse<Envelope<FamilyInvite[]>>(response)).data
+}
+
+export async function createFamilyInvite(
+  familyId: string,
+  role: 'admin' | 'member' | 'guest',
+  expiresInDays: number,
+  csrfToken: string,
+): Promise<{ invite: FamilyInvite; code: string }> {
+  const response = await fetch(`/api/v1/families/${familyId}/invites`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+    body: JSON.stringify({ role, expires_in_days: expiresInDays }),
+  })
+  return (await parse<Envelope<{ invite: FamilyInvite; code: string }>>(response)).data
+}
+
+export async function revokeFamilyInvite(
+  familyId: string,
+  inviteId: string,
+  csrfToken: string,
+): Promise<void> {
+  const response = await fetch(`/api/v1/families/${familyId}/invites/${inviteId}`, {
+    method: 'DELETE',
+    headers: { 'X-CSRF-Token': csrfToken },
+  })
+  if (!response.ok) await throwProblem(response)
+}
+
+export async function acceptFamilyInvite(code: string, csrfToken: string): Promise<string> {
+  const response = await fetch('/api/v1/family-invites/accept', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+    body: JSON.stringify({ code }),
+  })
+  return (await parse<Envelope<{ family_id: string }>>(response)).data.family_id
+}
+
+export async function registerWithFamilyInvite(input: InviteRegistrationInput): Promise<string> {
+  const response = await fetch('/api/v1/family-invites/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...input, email: input.email || null }),
+  })
+  return (await parse<Envelope<{ username: string }>>(response)).data.username
 }
 
 async function parse<T>(response: Response): Promise<T> {

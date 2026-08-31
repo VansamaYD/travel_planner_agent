@@ -10,6 +10,7 @@ from travel_agent.modules.access.application.errors import (
     CsrfMismatchError,
     InvalidCredentialsError,
     InvalidInputError,
+    InvalidInviteError,
     LoginRateLimitedError,
     PermissionDeniedError,
     ResourceConflictError,
@@ -28,6 +29,7 @@ _STATUS_BY_ERROR: dict[type[AccessError], int] = {
     ResourceNotFoundError: 404,
     ResourceConflictError: 409,
     VersionConflictError: 409,
+    InvalidInviteError: 400,
 }
 
 
@@ -62,6 +64,7 @@ def _title(error: AccessError) -> str:
         "resource_not_found": "资源不存在",
         "resource_conflict": "资源已经存在",
         "version_conflict": "资料已被其他人修改",
+        "invalid_invite": "邀请码无效",
     }
     return titles.get(error.code, "请求无法完成")
 
@@ -75,4 +78,6 @@ def _detail(error: AccessError) -> str:
         return "请稍后再试。"
     if isinstance(error, VersionConflictError):
         return "请刷新成员资料并确认最新内容后再保存。"
+    if isinstance(error, InvalidInviteError):
+        return "邀请码无效、已过期、已撤销或已被使用。"
     return _title(error)

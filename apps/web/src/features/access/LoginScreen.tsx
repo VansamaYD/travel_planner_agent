@@ -4,10 +4,12 @@ import { login, type SessionData } from '../../shared/api/access'
 
 interface LoginScreenProps {
   onAuthenticated: (session: SessionData) => void
+  initialLogin?: string
+  onUseInvite?: () => void
 }
 
-export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
-  const [loginName, setLoginName] = useState('')
+export function LoginScreen({ onAuthenticated, initialLogin = '', onUseInvite }: LoginScreenProps) {
+  const [loginName, setLoginName] = useState(initialLogin)
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -54,6 +56,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
         <button className="primary-button" disabled={submitting} type="submit">
           {submitting ? '正在登录…' : '登录'}
         </button>
+        {onUseInvite && <button className="text-button" onClick={onUseInvite} type="button">使用邀请码创建账号</button>}
       </form>
     </section>
   )

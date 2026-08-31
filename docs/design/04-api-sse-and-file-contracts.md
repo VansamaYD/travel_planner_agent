@@ -108,7 +108,9 @@ PATCH          /families/{family_id}/members/{membership_id}/role
 DELETE         /families/{family_id}/members/{membership_id}
 PUT            /families/{family_id}/members/{membership_id}/profile
 POST           /families/{family_id}/invites
-POST           /family-invites/{token}/accept
+DELETE         /families/{family_id}/invites/{invite_id}
+POST           /family-invites/accept
+POST           /family-invites/register
 GET/POST       /families/{family_id}/member-profiles
 GET/PATCH      /member-profiles/{profile_id}
 GET/POST       /preferences?scope_type=&scope_id=
@@ -123,6 +125,11 @@ PATCH/DELETE   /users/me/memories/{id}
 `PUT /families/{family_id}/members/{membership_id}/profile` 携带 `expected_version`
 执行乐观锁更新。后续独立 `member-profiles` 资源用于同一账号在家庭内维护多个旅行画像时扩展，
 不得破坏当前成员档案契约。
+
+家庭邀请默认为带有效期的单次令牌。原始邀请码只在创建响应中返回一次，数据库只保存摘要。
+为避免邀请码进入反向代理访问日志，接受和受邀注册接口通过 JSON 请求体传递 `code`，
+移动端分享链接将邀请码放在 URL Fragment 中。受邀注册不等同于开放公共注册；没有有效邀请码时
+不得创建账号。
 
 ### 5.3 Trip、需求和参与者
 

@@ -85,3 +85,15 @@ class FamilyMember:
     role: FamilyRole
     joined_at: datetime
     profile: TravelerProfile
+
+
+@dataclass(frozen=True, slots=True)
+class FamilyInvite:
+    id: str
+    family_id: str
+    role: FamilyRole
+    status: str
+    created_by_user_id: str
+    created_at: datetime
+    expires_at: datetime
+    accepted_by_user_id: str | None

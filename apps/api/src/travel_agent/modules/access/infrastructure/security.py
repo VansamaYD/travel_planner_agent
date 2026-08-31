@@ -69,6 +69,10 @@ class SecureTokenIssuer:
         encoded = base64.b32encode(secrets.token_bytes(20)).decode("ascii").rstrip("=")
         return "-".join(encoded[index : index + 4] for index in range(0, len(encoded), 4))
 
+    def invite_code(self) -> str:
+        encoded = base64.b32encode(secrets.token_bytes(15)).decode("ascii").rstrip("=")
+        return "-".join(encoded[index : index + 4] for index in range(0, len(encoded), 4))
+
 
 class SystemClock:
     def now(self) -> datetime:
