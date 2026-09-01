@@ -7,7 +7,7 @@ services:
       dockerfile: deploy/Dockerfile.api
     restart: unless-stopped
     env_file:
-      - ${TRAVEL_BOOTSTRAP_ENV_FILE:-../.env}
+      - ${TRAVEL_BOOTSTRAP_ENV_FILE:-../.env.example}
     environment:
       APP_ENV: ${TRAVEL_RUNTIME_ENV:-production}
       DATABASE_URL: sqlite+aiosqlite:////data/db/travel_agent.db
