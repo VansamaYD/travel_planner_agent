@@ -1,5 +1,9 @@
 .git
 .github
+.DS_Store
+**/.DS_Store
+._*
+**/._*
 .env
 .env.*
 !.env.example
