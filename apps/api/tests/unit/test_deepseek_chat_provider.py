@@ -39,18 +39,21 @@ async def test_chat_provider_streams_only_visible_answer_content() -> None:
             (),
         )
     ]
-    assert [event.text for event in events] == ["你", "好"]
+    assert [event.text for event in events if event.kind == "text"] == ["你", "好"]
+    assert [event.text for event in events if event.kind == "reasoning"] == ["hidden"]
 
 
 @pytest.mark.asyncio
 async def test_chat_provider_aggregates_streamed_tool_call_arguments() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
-        assert payload["tool_choice"] == "auto"
+        assert "tool_choice" not in payload
+        assert payload["thinking"] == {"type": "enabled"}
         assert payload["tools"][0]["function"]["name"] == "place_search"
         return httpx.Response(
             200,
             text=(
+                'data: {"choices":[{"delta":{"reasoning_content":"hidden-tool-reasoning"}}]}\n\n'
                 'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1",'
                 '"function":{"name":"place_search","arguments":"{\\"query\\":"}}]}}]}\n\n'
                 'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
@@ -80,6 +83,7 @@ async def test_chat_provider_aggregates_streamed_tool_call_arguments() -> None:
             ),
         )
     ]
-    assert events[0].tool_call_id == "call-1"
-    assert events[0].tool_name == "place_search"
-    assert json.loads(events[0].tool_arguments) == {"query": "拙政园"}
+    call = next(event for event in events if event.kind == "tool_call")
+    assert call.tool_call_id == "call-1"
+    assert call.tool_name == "place_search"
+    assert json.loads(call.tool_arguments) == {"query": "拙政园"}

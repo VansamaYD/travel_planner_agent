@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 
@@ -62,42 +63,68 @@ class DeepSeekChatProvider:
         }
         if tools:
             payload["tools"] = list(tools)
-            payload["tool_choice"] = "auto"
-        tool_calls: dict[int, dict[str, str]] = {}
-        async with (
-            httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client,
-            client.stream(
-                "POST",
-                f"{self._base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self._key}"},
-                json=payload,
-            ) as response,
-        ):
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line.startswith("data: ") or line == "data: [DONE]":
-                    continue
-                value = json.loads(line[6:])
-                delta_payload = value.get("choices", [{}])[0].get("delta", {})
-                delta = delta_payload.get("content")
-                if isinstance(delta, str) and delta:
-                    yield ModelStreamEvent("text", text=delta)
-                for call in delta_payload.get("tool_calls") or []:
-                    index = int(call.get("index", 0))
-                    aggregate = tool_calls.setdefault(
-                        index, {"id": "", "name": "", "arguments": ""}
+            # DeepSeek V4 thinking mode rejects tool_choice. It also requires the
+            # hidden reasoning_content to be replayed on subsequent tool rounds.
+            payload["thinking"] = {"type": "enabled"}
+        for attempt in range(3):
+            received_stream_data = False
+            tool_calls: dict[int, dict[str, str]] = {}
+            finish_reason = ""
+            try:
+                async with (
+                    httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client,
+                    client.stream(
+                        "POST",
+                        f"{self._base_url}/chat/completions",
+                        headers={"Authorization": f"Bearer {self._key}"},
+                        json=payload,
+                    ) as response,
+                ):
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data: ") or line == "data: [DONE]":
+                            continue
+                        received_stream_data = True
+                        value = json.loads(line[6:])
+                        choice = value.get("choices", [{}])[0]
+                        finish_reason = str(choice.get("finish_reason") or finish_reason)
+                        delta_payload = choice.get("delta", {})
+                        reasoning = delta_payload.get("reasoning_content")
+                        if isinstance(reasoning, str) and reasoning:
+                            yield ModelStreamEvent("reasoning", text=reasoning)
+                        delta = delta_payload.get("content")
+                        if isinstance(delta, str) and delta:
+                            yield ModelStreamEvent("text", text=delta)
+                        for call in delta_payload.get("tool_calls") or []:
+                            index = int(call.get("index", 0))
+                            aggregate = tool_calls.setdefault(
+                                index, {"id": "", "name": "", "arguments": ""}
+                            )
+                            aggregate["id"] += str(call.get("id") or "")
+                            function = call.get("function") or {}
+                            aggregate["name"] += str(function.get("name") or "")
+                            aggregate["arguments"] += str(function.get("arguments") or "")
+                if finish_reason == "insufficient_system_resource":
+                    raise RuntimeError("model reported insufficient system resources")
+                for call in tool_calls.values():
+                    yield ModelStreamEvent(
+                        "tool_call",
+                        tool_call_id=call["id"],
+                        tool_name=call["name"],
+                        tool_arguments=call["arguments"],
                     )
-                    aggregate["id"] += str(call.get("id") or "")
-                    function = call.get("function") or {}
-                    aggregate["name"] += str(function.get("name") or "")
-                    aggregate["arguments"] += str(function.get("arguments") or "")
-        for call in tool_calls.values():
-            yield ModelStreamEvent(
-                "tool_call",
-                tool_call_id=call["id"],
-                tool_name=call["name"],
-                tool_arguments=call["arguments"],
-            )
+                return
+            except (httpx.ConnectError, httpx.TimeoutException) as error:
+                if received_stream_data or attempt == 2:
+                    raise RuntimeError("model connection failed") from error
+                await asyncio.sleep(0.5 * (attempt + 1))
+            except httpx.HTTPStatusError as error:
+                retryable = error.response.status_code in {408, 429, 500, 502, 503, 504}
+                if received_stream_data or not retryable or attempt == 2:
+                    raise RuntimeError(
+                        f"model request failed with HTTP {error.response.status_code}"
+                    ) from error
+                await asyncio.sleep(0.5 * (attempt + 1))
 
 
 class DisabledChatProvider:

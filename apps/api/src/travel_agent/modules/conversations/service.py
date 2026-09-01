@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import secrets
 from collections.abc import AsyncIterator, Callable
@@ -18,6 +19,8 @@ from travel_agent.modules.conversations.domain import (
 )
 from travel_agent.modules.tools.domain import ToolError, ToolResult
 from travel_agent.shared.domain.ids import new_uuid7
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationError(Exception):
@@ -186,6 +189,7 @@ class ConversationService:
             for _ in range(4):
                 calls: list[ModelStreamEvent] = []
                 round_text: list[str] = []
+                round_reasoning: list[str] = []
                 async for model_event in self._provider.stream_turn(
                     tuple(model_messages), descriptors
                 ):
@@ -195,13 +199,15 @@ class ConversationService:
                         yield {"event": "assistant.delta", "text": model_event.text}
                     elif model_event.kind == "tool_call":
                         calls.append(model_event)
+                    elif model_event.kind == "reasoning":
+                        round_reasoning.append(model_event.text)
                 if not calls:
                     completed = True
                     break
                 model_messages.append(
                     {
                         "role": "assistant",
-                        "content": "".join(round_text) or None,
+                        "content": "".join(round_text),
                         "tool_calls": [
                             {
                                 "id": call.tool_call_id,
@@ -213,6 +219,11 @@ class ConversationService:
                             }
                             for call in calls
                         ],
+                        **(
+                            {"reasoning_content": "".join(round_reasoning)}
+                            if round_reasoning
+                            else {}
+                        ),
                     }
                 )
                 for call in calls:
@@ -373,7 +384,12 @@ class ConversationService:
                 )
                 await store.commit()
             yield {"event": "run.completed", "message_id": assistant.id, "label": "回答已完成"}
-        except Exception:
+        except Exception as error:
+            logger.exception(
+                "conversation run failed run_id=%s error_type=%s",
+                run.id,
+                type(error).__name__,
+            )
             async with self._store_factory() as store:
                 await store.fail(run.id, self._clock.now())
                 await store.event(

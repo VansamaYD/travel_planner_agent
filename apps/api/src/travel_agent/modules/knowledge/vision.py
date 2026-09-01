@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
+import logging
 from urllib.parse import urlparse
 
 import httpx
 
 from travel_agent.modules.knowledge.domain import VisionUnavailableError
+
+logger = logging.getLogger(__name__)
 
 
 class DeepSeekVisionProvider:
@@ -40,32 +44,64 @@ class DeepSeekVisionProvider:
         async with httpx.AsyncClient(
             timeout=self.timeout_seconds, transport=self.transport
         ) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json={
-                    "model": self.model_name,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": source_url,
-                                        "detail": "high" if mode != "place_photo" else "low",
-                                    },
+            request = {
+                "model": self.model_name,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": source_url,
+                                    "detail": "high" if mode != "place_photo" else "low",
                                 },
-                            ],
-                        }
-                    ],
-                    "response_format": {"type": "json_object"},
-                    "max_tokens": 4096,
-                    "stream": False,
-                },
-            )
-            response.raise_for_status()
+                            },
+                        ],
+                    }
+                ],
+                "response_format": {"type": "json_object"},
+                "max_tokens": 4096,
+                "stream": False,
+            }
+            response: httpx.Response | None = None
+            for attempt in range(3):
+                try:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers={"Authorization": f"Bearer {self.api_key}"},
+                        json=request,
+                    )
+                    response.raise_for_status()
+                    break
+                except (httpx.ConnectError, httpx.TimeoutException) as error:
+                    logger.warning(
+                        "vision request transport failure attempt=%s error_type=%s",
+                        attempt + 1,
+                        type(error).__name__,
+                    )
+                    if attempt == 2:
+                        raise VisionUnavailableError("视觉模型连接失败, 请稍后重试。") from error
+                except httpx.HTTPStatusError as error:
+                    status = error.response.status_code
+                    retryable = status in {408, 429, 500, 502, 503, 504}
+                    logger.warning(
+                        "vision request rejected attempt=%s status=%s retryable=%s",
+                        attempt + 1,
+                        status,
+                        retryable,
+                    )
+                    if not retryable or attempt == 2:
+                        message = (
+                            "视觉模型暂时不可用, 请稍后重试。"
+                            if retryable
+                            else "视觉模型无法处理该图片或请求格式。"
+                        )
+                        raise VisionUnavailableError(message) from error
+                await asyncio.sleep(0.5 * (attempt + 1))
+        if response is None:
+            raise VisionUnavailableError("视觉模型未返回结果。")
         payload = response.json()
         try:
             content = payload["choices"][0]["message"]["content"]

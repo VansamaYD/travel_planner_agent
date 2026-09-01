@@ -35,8 +35,12 @@ class ToolCallingProvider:
         tools: tuple[dict[str, object], ...],
     ) -> AsyncIterator[ModelStreamEvent]:
         if messages[-1]["role"] == "tool":
+            assistant = messages[-2]
+            assert assistant["content"] == ""
+            assert assistant["reasoning_content"] == "hidden-place-reasoning"
             yield ModelStreamEvent("text", text="拙政园地址已经通过高德查询。")
             return
+        yield ModelStreamEvent("reasoning", text="hidden-place-reasoning")
         yield ModelStreamEvent(
             "tool_call",
             tool_call_id="call-1",
